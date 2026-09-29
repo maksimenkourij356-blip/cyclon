@@ -247,13 +247,33 @@ export default function App() {
     setActiveMemberId(activeApartment.id, memberId);
   };
 
-  const handleCreateApartment = (newAptData: Partial<Apartment>) => {
+  const handleCreateApartment = (
+    newAptData: Partial<Apartment> & { includeMissedDaysInDebts?: boolean }
+  ) => {
     const config: ApartmentConfig = newAptData.config || DEFAULT_KRASIKOVS_CONFIG;
     const generatedTasks = generateTasksForConfig(config);
     const generatedBadges = generateBadgesForConfig(config, true); // new apartment starts with clean progress
 
     const aptId = newAptData.id || `apt-${newAptData.apartmentNumber || Date.now()}-${Date.now()}`;
     const todayStr = getLocalTodayDateString();
+    const realDay = getCurrentRealDayOfWeek();
+
+    // If user requested to include missed previous days of week into debts:
+    const initialDebts: CleaningTask[] = [];
+    if (newAptData.includeMissedDaysInDebts && realDay > 1) {
+      const missedTasks = generatedTasks.filter(
+        (t) => t.category !== 'ritual' && t.dayOfCycle && t.dayOfCycle < realDay
+      );
+      missedTasks.forEach((t) => {
+        initialDebts.push({
+          ...t,
+          id: `debt-${t.id}`,
+          description: `${t.description} (с Дня ${t.dayOfCycle})`,
+          status: 'available',
+        });
+      });
+    }
+
     const newApt: Apartment = {
       id: aptId,
       handle: newAptData.handle || 'family',
@@ -263,14 +283,14 @@ export default function App() {
       familyTitle: newAptData.familyTitle || 'Новая семья',
       config,
       members: newAptData.members || [],
-      cycleDay: newAptData.cycleDay || getCurrentRealDayOfWeek(),
+      cycleDay: realDay,
       cycleStartDate: todayStr,
       lastActiveCalendarDate: todayStr,
       coopTargetPoints: 1000,
       coopCurrentPoints: 0,
       coopRewardTitle: newAptData.coopRewardTitle || 'Семейный ужин / Отдых 🎉',
       tasks: generatedTasks,
-      debts: [],
+      debts: initialDebts,
       badges: generatedBadges,
       history: [],
       settings: { allowPwaPush: true, vacationMode: false },
