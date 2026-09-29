@@ -19,9 +19,17 @@ import {
   Unlock,
   Radio,
   Settings,
-  UserCheck
+  UserCheck,
+  MessageSquare,
+  Send,
+  CheckCircle2,
+  Clock,
+  Phone,
+  HelpCircle,
+  Building2,
+  Dices
 } from 'lucide-react';
-import { Apartment, HouseholdMember, SystemConfig } from '../types';
+import { Apartment, HouseholdMember, SystemConfig, DutyMessage } from '../types';
 import { soundEffects } from '../utils/audio';
 
 interface StarostaModalProps {
@@ -34,6 +42,9 @@ interface StarostaModalProps {
   onCreateApartment: (newApt: Partial<Apartment>) => Promise<void> | void;
   onUpdateSystemConfig: (newConfig: Partial<SystemConfig>) => Promise<void> | void;
   onSyncAll: () => Promise<void> | void;
+  dutyMessages?: DutyMessage[];
+  onUpdateDutyMessage?: (id: string, updates: Partial<DutyMessage>) => Promise<void> | void;
+  onDeleteDutyMessage?: (id: string) => Promise<void> | void;
 }
 
 export const StarostaModal: React.FC<StarostaModalProps> = ({
@@ -45,7 +56,10 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
   onDeleteApartment,
   onCreateApartment,
   onUpdateSystemConfig,
-  onSyncAll
+  onSyncAll,
+  dutyMessages = [],
+  onUpdateDutyMessage,
+  onDeleteDutyMessage,
 }) => {
   // Authorization state for this session
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -53,7 +67,11 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
   const [pinError, setPinError] = useState<string>('');
 
   // Tab navigation
-  const [activeTab, setActiveTab] = useState<'apartments' | 'users' | 'add_apt' | 'settings'>('apartments');
+  const [activeTab, setActiveTab] = useState<'apartments' | 'messages' | 'users' | 'add_apt' | 'settings'>('apartments');
+
+  // Duty messages states
+  const [messageFilter, setMessageFilter] = useState<'all' | 'new' | 'forgot_pin' | 'resolved'>('all');
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
 
   // Editing PIN states
   const [editingPinAptId, setEditingPinAptId] = useState<string | null>(null);
@@ -92,6 +110,15 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
     setTimeout(() => setActionSuccessMsg(''), 4000);
   };
 
+  const pendingMessagesCount = dutyMessages.filter((m) => m.status === 'new').length;
+  const filteredMessages = dutyMessages.filter((m) => {
+    if (messageFilter === 'all') return true;
+    if (messageFilter === 'new') return m.status === 'new';
+    if (messageFilter === 'forgot_pin') return m.subject === 'forgot_pin';
+    if (messageFilter === 'resolved') return m.status === 'resolved';
+    return true;
+  });
+
   const handleVerifyPin = (e: React.FormEvent) => {
     e.preventDefault();
     const correctPin = systemConfig.starostaPin || '7777';
@@ -101,7 +128,7 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
       setPinError('');
     } else {
       soundEffects.playError();
-      setPinError('Неверный PIN-код дежурного! (По умолчанию: 7777)');
+      setPinError('Неверный PIN-код дежурного!');
     }
   };
 
@@ -372,7 +399,7 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
               <div className="max-w-md space-y-1.5">
                 <h3 className="text-lg font-bold text-white">Дежурный по дому</h3>
                 <p className="text-xs text-slate-400">
-                  Доступ к управлению базой данных защищён PIN-кодом (7777).
+                  Доступ к пульту управления защищён персональным PIN-кодом.
                 </p>
               </div>
 
@@ -386,18 +413,14 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                       setEnteredPin(e.target.value);
                       setPinError('');
                     }}
-                    placeholder="PIN (7777)"
+                    placeholder="••••"
                     autoFocus
                     className="w-full text-center text-2xl tracking-[0.3em] font-mono py-3 px-4 rounded-2xl bg-slate-950 border border-cyan-500/40 text-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   />
-                  {pinError ? (
+                  {pinError && (
                     <p className="text-xs text-rose-400 mt-2 flex items-center justify-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5" />
                       {pinError}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-500 mt-2">
-                      По умолчанию: <span className="font-mono text-cyan-400 font-semibold">7777</span>
                     </p>
                   )}
                 </div>
@@ -426,6 +449,22 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                 >
                   <Home className="w-4 h-4" />
                   Квартиры & PIN
+                </button>
+                <button
+                  onClick={() => setActiveTab('messages')}
+                  className={`flex-1 min-w-[120px] py-2 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition relative ${
+                    activeTab === 'messages'
+                      ? 'bg-amber-500 text-slate-950 shadow-md'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Обращения</span>
+                  {pendingMessagesCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-mono text-[10px] font-bold animate-pulse">
+                      {pendingMessagesCount}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={() => setActiveTab('users')}
@@ -565,6 +604,290 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* TAB: MESSAGES FROM RESIDENTS */}
+              {activeTab === 'messages' && (
+                <div className="space-y-4">
+                  {/* Filter chips & stats */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-950/60 border border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-cyan-400" />
+                      <span className="text-xs font-bold text-white">
+                        Журнал обращений:
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono">
+                        {dutyMessages.length} всего
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 flex-wrap text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setMessageFilter('all')}
+                        className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                          messageFilter === 'all'
+                            ? 'bg-amber-500 text-slate-950 font-bold'
+                            : 'bg-slate-900 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Все ({dutyMessages.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMessageFilter('new')}
+                        className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                          messageFilter === 'new'
+                            ? 'bg-rose-500 text-white font-bold'
+                            : 'bg-slate-900 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Новые ({pendingMessagesCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMessageFilter('forgot_pin')}
+                        className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                          messageFilter === 'forgot_pin'
+                            ? 'bg-cyan-500 text-slate-950 font-bold'
+                            : 'bg-slate-900 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Забыли PIN ({dutyMessages.filter((m) => m.subject === 'forgot_pin').length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMessageFilter('resolved')}
+                        className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                          messageFilter === 'resolved'
+                            ? 'bg-emerald-500 text-slate-950 font-bold'
+                            : 'bg-slate-900 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Решённые ({dutyMessages.filter((m) => m.status === 'resolved').length})
+                      </button>
+                    </div>
+                  </div>
+
+                  {filteredMessages.length === 0 ? (
+                    <div className="p-8 text-center rounded-2xl bg-slate-950/40 border border-slate-800 space-y-2">
+                      <MessageSquare className="w-8 h-8 text-slate-600 mx-auto" />
+                      <p className="text-xs text-slate-400 font-medium">
+                        Обращений в выбранной категории пока нет
+                      </p>
+                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                        Когда жильцы напишут дежурному (например, забудут PIN-код от квартиры), их сообщения мгновенно появятся здесь в реальном времени.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredMessages.map((msg) => {
+                        const targetApt = apartments.find(
+                          (a) => a.apartmentNumber === msg.apartmentNumber || a.id === msg.apartmentId
+                        );
+
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`p-4 rounded-2xl border text-xs space-y-3 transition-all ${
+                              msg.status === 'new'
+                                ? 'bg-slate-900/90 border-amber-500/40 shadow-md shadow-amber-950/30'
+                                : msg.status === 'resolved'
+                                ? 'bg-slate-950/60 border-emerald-500/30 opacity-90'
+                                : 'bg-slate-900/60 border-slate-800'
+                            }`}
+                          >
+                            {/* Message Header */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                    msg.subject === 'forgot_pin'
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                  }`}
+                                >
+                                  {msg.subject === 'forgot_pin' ? '🔑 Забыли PIN' : msg.subject === 'access_issue' ? '🚪 Доступ' : '💬 Вопрос'}
+                                </span>
+
+                                <span className="font-bold text-white text-xs">
+                                  {targetApt
+                                    ? `Кв. №${targetApt.apartmentNumber} (${targetApt.familyTitle})`
+                                    : msg.apartmentNumber
+                                    ? `Кв. №${msg.apartmentNumber}`
+                                    : 'Без квартиры'}
+                                </span>
+
+                                <span className="text-slate-400">· {msg.senderName}</span>
+
+                                {msg.contact && (
+                                  <span className="text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/20 text-[10px] font-mono">
+                                    {msg.contact}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                <span>{msg.createdAt}</span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full font-bold ${
+                                    msg.status === 'resolved'
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                      : msg.status === 'new'
+                                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                  }`}
+                                >
+                                  {msg.status === 'resolved' ? 'Решено' : msg.status === 'new' ? 'Новое' : 'В работе'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Resident message body */}
+                            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 text-slate-200 text-xs">
+                              «{msg.message}»
+                            </div>
+
+                            {/* If Forgot PIN: show current PIN and quick 1-click reset */}
+                            {targetApt && (
+                              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                  <KeyRound className="w-4 h-4 text-amber-400" />
+                                  <span className="text-slate-400 text-xs">
+                                    Текущий PIN кв. №{targetApt.apartmentNumber}:
+                                  </span>
+                                  <span className="font-mono text-sm font-bold text-amber-300 px-2 py-0.5 rounded bg-slate-900 border border-slate-700">
+                                    {targetApt.pinCode}
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const randomPin = Math.floor(1000 + Math.random() * 9000).toString();
+                                    soundEffects.playVictory();
+                                    await onUpdateApartment({ ...targetApt, pinCode: randomPin });
+                                    const replyText = `Здравствуйте, ${msg.senderName}! PIN-код квартиры №${targetApt.apartmentNumber} успешно сброшен дежурным. Ваш новый PIN-код: ${randomPin}. Введите его в домофоне для входа.`;
+                                    if (onUpdateDutyMessage) {
+                                      await onUpdateDutyMessage(msg.id, {
+                                        reply: replyText,
+                                        repliedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                        status: 'resolved',
+                                      });
+                                    }
+                                    showToast(`PIN для кв. №${targetApt.apartmentNumber} изменён на "${randomPin}" и отправлен жильцу!`);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow transition cursor-pointer"
+                                >
+                                  <Dices className="w-3.5 h-3.5" />
+                                  <span>Сбросить PIN на новый и отправить ответ</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Existing reply if any */}
+                            {msg.reply && (
+                              <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 space-y-1">
+                                <div className="flex items-center justify-between text-[11px] font-bold text-emerald-300">
+                                  <span className="flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Ваш ответ жильцу:
+                                  </span>
+                                  {msg.repliedAt && <span className="text-slate-400 font-normal">{msg.repliedAt}</span>}
+                                </div>
+                                <p className="text-xs text-emerald-100 whitespace-pre-line font-medium">
+                                  {msg.reply}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Reply Input Form */}
+                            <div className="space-y-2 pt-1">
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={replyDrafts[msg.id] ?? ''}
+                                  onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [msg.id]: e.target.value }))}
+                                  placeholder={msg.reply ? 'Дополнить ответ...' : 'Написать ответ жильцу...'}
+                                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={!replyDrafts[msg.id]?.trim()}
+                                  onClick={async () => {
+                                    const text = replyDrafts[msg.id]?.trim();
+                                    if (!text || !onUpdateDutyMessage) return;
+                                    soundEffects.playClick();
+                                    await onUpdateDutyMessage(msg.id, {
+                                      reply: text,
+                                      repliedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                      status: 'resolved',
+                                    });
+                                    setReplyDrafts((prev) => ({ ...prev, [msg.id]: '' }));
+                                    showToast('Ответ отправлен жильцу!');
+                                  }}
+                                  className="px-3 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>Ответить</span>
+                                </button>
+                              </div>
+
+                              <div className="flex items-center justify-between text-xs pt-1">
+                                <div className="flex items-center gap-2">
+                                  {msg.status !== 'resolved' ? (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (onUpdateDutyMessage) {
+                                          await onUpdateDutyMessage(msg.id, { status: 'resolved' });
+                                          showToast('Обращение помечено как решённое');
+                                        }
+                                      }}
+                                      className="text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      <span>Пометить как решено</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (onUpdateDutyMessage) {
+                                          await onUpdateDutyMessage(msg.id, { status: 'new' });
+                                          showToast('Обращение возвращено в новые');
+                                        }
+                                      }}
+                                      className="text-slate-400 hover:text-slate-300 text-[11px] cursor-pointer"
+                                    >
+                                      Вернуть в работу
+                                    </button>
+                                  )}
+                                </div>
+
+                                {onDeleteDutyMessage && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (window.confirm('Удалить это обращение из журнала?')) {
+                                        await onDeleteDutyMessage(msg.id);
+                                        showToast('Обращение удалено');
+                                      }
+                                    }}
+                                    className="text-rose-400 hover:text-rose-300 text-[11px] flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Удалить</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -839,17 +1162,17 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
 
                     <div>
                       <label className="text-xs text-slate-300 font-medium block mb-1">
-                        Новый PIN дежурного (по умолчанию 7777):
+                        Новый PIN дежурного:
                       </label>
                       <input
                         type="password"
-                        placeholder="Оставьте пустым, чтобы не менять (текущий: 7777)"
+                        placeholder="Введите новый PIN (или оставьте пустым)"
                         value={newMasterPin}
                         onChange={(e) => setNewMasterPin(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white font-mono"
                       />
                       <p className="text-[10px] text-slate-500 mt-1">
-                        По этому коду открывается пульт дежурного (также можно набрать 7777 в домофоне).
+                        По этому персональному мастер-коду открывается пульт дежурного (в том числе через домофон).
                       </p>
                     </div>
 

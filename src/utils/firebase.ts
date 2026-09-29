@@ -11,7 +11,7 @@ import {
   onSnapshot,
   query
 } from 'firebase/firestore';
-import { Apartment, SystemConfig } from '../types';
+import { Apartment, SystemConfig, DutyMessage } from '../types';
 import { INITIAL_APARTMENTS } from '../data/initialData';
 
 // Configuration from Firebase project provisioned for CYCLON
@@ -182,6 +182,86 @@ export async function saveSystemConfig(newConfig: Partial<SystemConfig>): Promis
     return true;
   } catch (err) {
     console.error('[Firebase] Failed to save system config:', err);
+    return false;
+  }
+}
+
+const DUTY_MESSAGES_COLLECTION = 'duty_messages';
+
+/**
+ * Subscribes to duty officer messages from residents in real-time.
+ */
+export function subscribeToDutyMessages(
+  onSuccess: (messages: DutyMessage[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  try {
+    const ref = collection(db, DUTY_MESSAGES_COLLECTION);
+    const q = query(ref);
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: DutyMessage[] = [];
+        snapshot.forEach((d) => {
+          list.push({ ...(d.data() as DutyMessage), id: d.id });
+        });
+        // Sort descending by creation date
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        onSuccess(list);
+      },
+      (err) => {
+        console.warn('[Firebase] Duty messages subscription error:', err);
+        if (onError) onError(err);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firebase] Duty messages setup failed:', err);
+    if (onError) onError(err as Error);
+    return () => {};
+  }
+}
+
+/**
+ * Sends a message/request from a resident to the Duty Officer.
+ */
+export async function sendDutyMessageToCloud(msg: DutyMessage): Promise<boolean> {
+  try {
+    const ref = doc(db, DUTY_MESSAGES_COLLECTION, msg.id);
+    await setDoc(ref, msg);
+    return true;
+  } catch (err) {
+    console.error('[Firebase] Failed to send duty message:', err);
+    return false;
+  }
+}
+
+/**
+ * Updates a duty message (e.g. duty officer reply or status update).
+ */
+export async function updateDutyMessageInCloud(
+  id: string, 
+  updates: Partial<DutyMessage>
+): Promise<boolean> {
+  try {
+    const ref = doc(db, DUTY_MESSAGES_COLLECTION, id);
+    await setDoc(ref, updates, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('[Firebase] Failed to update duty message:', err);
+    return false;
+  }
+}
+
+/**
+ * Deletes a duty message from cloud.
+ */
+export async function deleteDutyMessageFromCloud(id: string): Promise<boolean> {
+  try {
+    const ref = doc(db, DUTY_MESSAGES_COLLECTION, id);
+    await deleteDoc(ref);
+    return true;
+  } catch (err) {
+    console.error('[Firebase] Failed to delete duty message:', err);
     return false;
   }
 }

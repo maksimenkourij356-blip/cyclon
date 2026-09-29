@@ -18,10 +18,11 @@ import {
   LogOut,
   Hash,
   AtSign,
-  History
+  History,
+  MessageSquare
 } from 'lucide-react';
 import { soundEffects } from '../utils/audio';
-import { Apartment, ApartmentConfig, SystemConfig } from '../types';
+import { Apartment, ApartmentConfig, SystemConfig, DutyMessageSubject } from '../types';
 import { 
   authorizeApartment, 
   getPreviousSessionApartmentId, 
@@ -39,6 +40,7 @@ interface IntercomModalProps {
   targetApartment?: Apartment | null;
   onClearTargetApartment?: () => void;
   onOpenStarosta?: () => void;
+  onOpenContactDuty?: (aptNumber?: number, subject?: DutyMessageSubject) => void;
   systemConfig?: SystemConfig;
 }
 
@@ -51,6 +53,7 @@ export const IntercomModal: React.FC<IntercomModalProps> = ({
   targetApartment = null,
   onClearTargetApartment,
   onOpenStarosta,
+  onOpenContactDuty,
   systemConfig,
 }) => {
   const [activeTab, setActiveTab] = useState<'dial' | 'create'>('dial');
@@ -666,6 +669,22 @@ export const IntercomModal: React.FC<IntercomModalProps> = ({
                 >
                   <PhoneCall className="w-3.5 h-3.5 mb-0.5" />
                   <span className="text-[10px] font-mono tracking-wider">ВЫЗОВ</span>
+                </button>
+              </div>
+
+              {/* Contact Duty Officer Link */}
+              <div className="flex items-center justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenContactDuty) {
+                      onOpenContactDuty(selectedTarget?.apartmentNumber, 'forgot_pin');
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-cyan-400 hover:text-cyan-300 border border-slate-800 hover:border-cyan-500/30 text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Забыли PIN-код? Написать дежурному</span>
                 </button>
               </div>
 

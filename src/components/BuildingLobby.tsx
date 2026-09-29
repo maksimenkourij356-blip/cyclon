@@ -16,9 +16,10 @@ import {
   Search,
   KeyRound,
   Radio,
-  Plus
+  Plus,
+  MessageSquare
 } from 'lucide-react';
-import { Apartment, SystemConfig } from '../types';
+import { Apartment, SystemConfig, DutyMessage, DutyMessageSubject } from '../types';
 import { getAuthorizedApartmentIds } from '../utils/storage';
 import { CreateApartmentModal } from './CreateApartmentModal';
 
@@ -32,6 +33,8 @@ interface BuildingLobbyProps {
   onAttemptEnterApartment?: (apt: Apartment) => void;
   onOpenStarosta?: () => void;
   onCreateApartment?: (newAptData: Partial<Apartment>) => void;
+  onOpenContactDuty?: (aptNumber?: number, subject?: DutyMessageSubject) => void;
+  dutyMessages?: DutyMessage[];
   systemConfig?: SystemConfig;
 }
 
@@ -45,6 +48,8 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
   onAttemptEnterApartment,
   onOpenStarosta,
   onCreateApartment,
+  onOpenContactDuty,
+  dutyMessages = [],
   systemConfig,
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'mine'>('all');
@@ -260,6 +265,16 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
               >
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
                 <span>Заселиться / Добавить квартиру</span>
+              </button>
+            )}
+
+            {onOpenContactDuty && (
+              <button
+                onClick={() => onOpenContactDuty()}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Написать дежурному</span>
               </button>
             )}
           </div>

@@ -117,3 +117,20 @@ export interface SystemConfig {
   announcement?: string;
   lastUpdated?: string;
 }
+
+export type DutyMessageSubject = 'forgot_pin' | 'general_question' | 'access_issue' | 'other';
+
+export interface DutyMessage {
+  id: string;
+  apartmentNumber?: number;
+  apartmentId?: string;
+  familyTitle?: string;
+  senderName: string;
+  contact?: string;
+  subject: DutyMessageSubject;
+  message: string;
+  createdAt: string;
+  status: 'new' | 'in_progress' | 'resolved';
+  reply?: string;
+  repliedAt?: string;
+}

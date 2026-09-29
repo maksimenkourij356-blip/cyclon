@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-import { Apartment, CleaningTask, HouseholdMember } from './types';
+import { Apartment, CleaningTask, HouseholdMember, DutyMessage, DutyMessageSubject } from './types';
 import { 
   loadApartments, 
   saveApartments, 
@@ -42,6 +42,7 @@ import { ApartmentConfigModal } from './components/ApartmentConfigModal';
 import { TransferTaskModal } from './components/TransferTaskModal';
 import { UserGuide } from './components/UserGuide';
 import { StarostaModal } from './components/StarostaModal';
+import { ContactDutyModal } from './components/ContactDutyModal';
 import { DEFAULT_KRASIKOVS_CONFIG, generateTasksForConfig, generateBadgesForConfig } from './data/taskGenerator';
 import { evaluateBadgesOnTaskComplete } from './utils/badgeEngine';
 import { ApartmentConfig, SystemConfig } from './types';
@@ -52,7 +53,11 @@ import {
   seedCloudIfEmpty, 
   subscribeToSystemConfig, 
   saveSystemConfig, 
-  DEFAULT_SYSTEM_CONFIG 
+  DEFAULT_SYSTEM_CONFIG,
+  subscribeToDutyMessages,
+  sendDutyMessageToCloud,
+  updateDutyMessageInCloud,
+  deleteDutyMessageFromCloud
 } from './utils/firebase';
 import { 
   advanceApartmentDay, 
@@ -78,6 +83,10 @@ export default function App() {
   const [targetApartmentForIntercom, setTargetApartmentForIntercom] = useState<Apartment | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isContactDutyOpen, setIsContactDutyOpen] = useState(false);
+  const [contactDutyAptNum, setContactDutyAptNum] = useState<number | null>(null);
+  const [contactDutySubject, setContactDutySubject] = useState<DutyMessageSubject>('forgot_pin');
+  const [dutyMessages, setDutyMessages] = useState<DutyMessage[]>([]);
   const [timerTask, setTimerTask] = useState<CleaningTask | null>(null);
   const [taskToTransfer, setTaskToTransfer] = useState<CleaningTask | null>(null);
   const [daySwitchToast, setDaySwitchToast] = useState<{
@@ -130,9 +139,15 @@ export default function App() {
       setSystemConfig(cfg);
     });
 
+    // Subscribe to resident duty messages in real-time
+    const unsubscribeMessages = subscribeToDutyMessages((msgs) => {
+      setDutyMessages(msgs);
+    });
+
     return () => {
       unsubscribeApts();
       unsubscribeConfig();
+      unsubscribeMessages();
     };
   }, []);
 
@@ -245,6 +260,40 @@ export default function App() {
   const handleSwitchMember = (memberId: string) => {
     setActiveMemberIdState(memberId);
     setActiveMemberId(activeApartment.id, memberId);
+  };
+
+  const handleOpenContactDuty = (aptNumber?: number, subject?: DutyMessageSubject) => {
+    setContactDutyAptNum(aptNumber ?? null);
+    setContactDutySubject(subject ?? 'forgot_pin');
+    setIsContactDutyOpen(true);
+  };
+
+  const handleSendDutyMessage = async (
+    msgData: Omit<DutyMessage, 'id' | 'createdAt' | 'status'>
+  ) => {
+    const newMsg: DutyMessage = {
+      ...msgData,
+      id: `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: new Date().toLocaleString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      status: 'new',
+    };
+    setDutyMessages((prev) => [newMsg, ...prev]);
+    await sendDutyMessageToCloud(newMsg);
+  };
+
+  const handleUpdateDutyMessage = async (id: string, updates: Partial<DutyMessage>) => {
+    setDutyMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
+    await updateDutyMessageInCloud(id, updates);
+  };
+
+  const handleDeleteDutyMessage = async (id: string) => {
+    setDutyMessages((prev) => prev.filter((m) => m.id !== id));
+    await deleteDutyMessageFromCloud(id);
   };
 
   const handleCreateApartment = (
@@ -1011,6 +1060,8 @@ export default function App() {
                 onAttemptEnterApartment={handleAttemptEnterApartment}
                 onOpenStarosta={() => setIsStarostaOpen(true)}
                 onCreateApartment={handleCreateApartment}
+                onOpenContactDuty={handleOpenContactDuty}
+                dutyMessages={dutyMessages}
                 systemConfig={systemConfig}
               />
             </motion.div>
@@ -1136,6 +1187,7 @@ export default function App() {
         targetApartment={targetApartmentForIntercom}
         onClearTargetApartment={() => setTargetApartmentForIntercom(null)}
         onOpenStarosta={() => setIsStarostaOpen(true)}
+        onOpenContactDuty={handleOpenContactDuty}
         systemConfig={systemConfig}
       />
 
@@ -1185,6 +1237,21 @@ export default function App() {
         onCreateApartment={handleStarostaCreateApartment}
         onUpdateSystemConfig={handleUpdateSystemConfig}
         onSyncAll={handleStarostaSyncAll}
+        dutyMessages={dutyMessages}
+        onUpdateDutyMessage={handleUpdateDutyMessage}
+        onDeleteDutyMessage={handleDeleteDutyMessage}
+      />
+
+      {/* Contact Duty Officer Modal */}
+      <ContactDutyModal
+        isOpen={isContactDutyOpen}
+        onClose={() => setIsContactDutyOpen(false)}
+        apartments={apartments}
+        initialApartmentNumber={contactDutyAptNum}
+        initialSubject={contactDutySubject}
+        dutyMessages={dutyMessages}
+        onSendMessage={handleSendDutyMessage}
+        onSelectApartment={handleSelectApartment}
       />
     </div>
   );
