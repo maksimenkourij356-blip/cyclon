@@ -46,10 +46,13 @@ import { ContactDutyModal } from './components/ContactDutyModal';
 import { DEFAULT_KRASIKOVS_CONFIG, generateTasksForConfig, generateBadgesForConfig } from './data/taskGenerator';
 import { evaluateBadgesOnTaskComplete } from './utils/badgeEngine';
 import { ApartmentConfig, SystemConfig } from './types';
+import { INITIAL_APARTMENTS } from './data/initialData';
 import { 
   subscribeToCloudApartments, 
   syncApartmentToCloud, 
   deleteApartmentFromCloud, 
+  deleteAllApartmentsFromCloud,
+  restoreDemoApartmentsToCloud,
   seedCloudIfEmpty, 
   subscribeToSystemConfig, 
   saveSystemConfig, 
@@ -107,13 +110,14 @@ export default function App() {
   } | null>(null);
 
   // Active apartment & active member objects
-  const activeApartment = apartments.find((a) => a.id === activeAptId) || apartments[0];
+  const activeApartment = apartments.find((a) => a.id === activeAptId) || apartments[0] || null;
   const activeMember =
-    activeApartment?.members.find((m) => m.id === activeMemberId) ||
-    activeApartment?.members[0];
+    activeApartment?.members?.find((m) => m.id === activeMemberId) ||
+    activeApartment?.members?.[0] ||
+    null;
   const otherMember =
-    activeApartment?.members.find((m) => m.id !== activeMember?.id) ||
-    activeApartment?.members[1] ||
+    activeApartment?.members?.find((m) => m.id !== activeMember?.id) ||
+    activeApartment?.members?.[1] ||
     activeMember;
 
   // Sync to storage
@@ -128,9 +132,13 @@ export default function App() {
 
     // Subscribe to cloud apartments in real-time
     const unsubscribeApts = subscribeToCloudApartments((cloudApts) => {
-      if (cloudApts && cloudApts.length > 0) {
+      if (cloudApts !== undefined && cloudApts !== null) {
         setApartments(cloudApts);
         saveApartments(cloudApts);
+        if (cloudApts.length === 0) {
+          setActiveAptIdState('');
+          setCurrentView('lobby');
+        }
       }
     });
 
@@ -425,13 +433,37 @@ export default function App() {
   const handleStarostaDeleteApartment = async (aptId: string) => {
     setApartments((prev) => {
       const remaining = prev.filter((a) => a.id !== aptId);
-      if (activeAptId === aptId && remaining.length > 0) {
-        setActiveAptIdState(remaining[0].id);
-        setActiveApartmentId(remaining[0].id);
+      saveApartments(remaining);
+      if (activeAptId === aptId) {
+        if (remaining.length > 0) {
+          setActiveAptIdState(remaining[0].id);
+          setActiveApartmentId(remaining[0].id);
+        } else {
+          setActiveAptIdState('');
+          setCurrentView('lobby');
+        }
       }
       return remaining;
     });
     await deleteApartmentFromCloud(aptId);
+  };
+
+  const handleStarostaDeleteAllApartments = async () => {
+    setApartments([]);
+    saveApartments([]);
+    setActiveAptIdState('');
+    setCurrentView('lobby');
+    await deleteAllApartmentsFromCloud();
+  };
+
+  const handleStarostaRestoreDemoApartments = async () => {
+    setApartments(INITIAL_APARTMENTS);
+    saveApartments(INITIAL_APARTMENTS);
+    if (INITIAL_APARTMENTS.length > 0) {
+      setActiveAptIdState(INITIAL_APARTMENTS[0].id);
+      setActiveApartmentId(INITIAL_APARTMENTS[0].id);
+    }
+    await restoreDemoApartmentsToCloud();
   };
 
   const handleStarostaCreateApartment = async (newAptData: Partial<Apartment>) => {
@@ -1061,6 +1093,7 @@ export default function App() {
                 onOpenStarosta={() => setIsStarostaOpen(true)}
                 onCreateApartment={handleCreateApartment}
                 onOpenContactDuty={handleOpenContactDuty}
+                onRestoreDemo={handleStarostaRestoreDemoApartments}
                 dutyMessages={dutyMessages}
                 systemConfig={systemConfig}
               />
@@ -1073,12 +1106,58 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
             >
-              <UserGuide
-                apartment={activeApartment}
-                onGoToApartment={() => setCurrentView('apartment')}
-                onOpenIntercom={() => setIsIntercomOpen(true)}
-                onOpenConfig={() => setIsConfigOpen(true)}
-              />
+              {activeApartment ? (
+                <UserGuide
+                  apartment={activeApartment}
+                  onGoToApartment={() => setCurrentView('apartment')}
+                  onOpenIntercom={() => setIsIntercomOpen(true)}
+                  onOpenConfig={() => setIsConfigOpen(true)}
+                />
+              ) : (
+                <div className="text-center py-16 px-6 bg-slate-900/60 rounded-3xl border border-slate-800 space-y-4">
+                  <div className="text-4xl">📖</div>
+                  <h3 className="text-xl font-bold text-white">Гид по дому</h3>
+                  <p className="text-slate-400 text-sm max-w-md mx-auto">
+                    В доме пока нет квартир. Заселите первую семью в лобби дома.
+                  </p>
+                  <button
+                    onClick={() => setCurrentView('lobby')}
+                    className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm"
+                  >
+                    Вернуться в лобби
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          ) : !activeApartment ? (
+            <motion.div
+              key="no-apartment"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="text-center py-16 px-6 bg-slate-900/60 rounded-3xl border border-slate-800 space-y-4"
+            >
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-3xl">
+                🏢
+              </div>
+              <h3 className="text-xl font-bold text-white">В доме нет активных квартир</h3>
+              <p className="text-slate-400 text-sm max-w-md mx-auto">
+                Все квартиры были удалены или база пуста. Перейдите в лобби, чтобы заселить новую семью или открыть панель дежурного.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setCurrentView('lobby')}
+                  className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm"
+                >
+                  Перейти в лобби дома
+                </button>
+                <button
+                  onClick={() => setIsStarostaOpen(true)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm"
+                >
+                  Панель дежурного
+                </button>
+              </div>
             </motion.div>
           ) : (
             <motion.div
@@ -1201,20 +1280,24 @@ export default function App() {
       />
 
       {/* Telegram & PWA Share Modal */}
-      <TelegramShareModal
-        isOpen={isShareOpen}
-        onClose={() => setIsShareOpen(false)}
-        apartment={activeApartment}
-      />
+      {activeApartment && (
+        <TelegramShareModal
+          isOpen={isShareOpen}
+          onClose={() => setIsShareOpen(false)}
+          apartment={activeApartment}
+        />
+      )}
 
       {/* Apartment Configuration Modal */}
-      <ApartmentConfigModal
-        isOpen={isConfigOpen}
-        onClose={() => setIsConfigOpen(false)}
-        apartment={activeApartment}
-        onSaveConfig={handleSaveApartmentConfig}
-        onImportData={handleImportApartmentData}
-      />
+      {activeApartment && (
+        <ApartmentConfigModal
+          isOpen={isConfigOpen}
+          onClose={() => setIsConfigOpen(false)}
+          apartment={activeApartment}
+          onSaveConfig={handleSaveApartmentConfig}
+          onImportData={handleImportApartmentData}
+        />
+      )}
 
       {/* Transfer Task to Partner Modal with Friendly Promise */}
       <TransferTaskModal
@@ -1234,6 +1317,8 @@ export default function App() {
         systemConfig={systemConfig}
         onUpdateApartment={handleStarostaUpdateApartment}
         onDeleteApartment={handleStarostaDeleteApartment}
+        onDeleteAllApartments={handleStarostaDeleteAllApartments}
+        onRestoreDemoApartments={handleStarostaRestoreDemoApartments}
         onCreateApartment={handleStarostaCreateApartment}
         onUpdateSystemConfig={handleUpdateSystemConfig}
         onSyncAll={handleStarostaSyncAll}

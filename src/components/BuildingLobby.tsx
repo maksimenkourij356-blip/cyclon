@@ -25,7 +25,7 @@ import { CreateApartmentModal } from './CreateApartmentModal';
 
 interface BuildingLobbyProps {
   apartments: Apartment[];
-  activeApartment: Apartment;
+  activeApartment?: Apartment | null;
   onOpenIntercom: () => void;
   onSelectApartment: (apt: Apartment) => void;
   onGoToActiveApartment: () => void;
@@ -34,6 +34,7 @@ interface BuildingLobbyProps {
   onOpenStarosta?: () => void;
   onCreateApartment?: (newAptData: Partial<Apartment>) => void;
   onOpenContactDuty?: (aptNumber?: number, subject?: DutyMessageSubject) => void;
+  onRestoreDemo?: () => void;
   dutyMessages?: DutyMessage[];
   systemConfig?: SystemConfig;
 }
@@ -49,6 +50,7 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
   onOpenStarosta,
   onCreateApartment,
   onOpenContactDuty,
+  onRestoreDemo,
   dutyMessages = [],
   systemConfig,
 }) => {
@@ -84,9 +86,9 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
     0
   );
 
-  const maxStreak = Math.max(
-    ...apartments.flatMap((a) => a.members.map((m) => m.streakDays))
-  );
+  const maxStreak = apartments.length > 0
+    ? Math.max(0, ...apartments.flatMap((a) => a.members.map((m) => m.streakDays)))
+    : 0;
 
   const handleCardClick = (apt: Apartment) => {
     const isAuthorized = authorizedIds.includes(apt.id);
@@ -136,14 +138,16 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row md:flex-col gap-3 shrink-0">
-            <button
-              onClick={onGoToActiveApartment}
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm shadow-xl shadow-cyan-950/50 flex items-center justify-center gap-2.5 transition-all cursor-pointer group"
-            >
-              <DoorOpen className="w-5 h-5 text-cyan-200 group-hover:scale-110 transition-transform" />
-              <span>Войти в кв. {activeApartment.apartmentNumber} ({activeApartment.familyTitle})</span>
-              <ArrowRight className="w-4 h-4 text-cyan-200 group-hover:translate-x-1 transition-transform" />
-            </button>
+            {activeApartment && (
+              <button
+                onClick={onGoToActiveApartment}
+                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm shadow-xl shadow-cyan-950/50 flex items-center justify-center gap-2.5 transition-all cursor-pointer group"
+              >
+                <DoorOpen className="w-5 h-5 text-cyan-200 group-hover:scale-110 transition-transform" />
+                <span>Войти в кв. {activeApartment.apartmentNumber} ({activeApartment.familyTitle})</span>
+                <ArrowRight className="w-4 h-4 text-cyan-200 group-hover:translate-x-1 transition-transform" />
+              </button>
+            )}
 
             <button
               onClick={onOpenIntercom}
@@ -202,8 +206,14 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
           <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
             <div className="text-[11px] text-slate-400 font-medium">Лидер подъезда</div>
             <div className="text-sm font-bold text-emerald-400 flex items-center gap-1.5 mt-1 truncate">
-              <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
-              Кв. {sortedApartments[0]?.apartmentNumber} ({sortedApartments[0]?.familyTitle})
+              {sortedApartments[0] ? (
+                <>
+                  <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
+                  <span>Кв. {sortedApartments[0].apartmentNumber} ({sortedApartments[0].familyTitle})</span>
+                </>
+              ) : (
+                <span className="text-slate-500 font-normal">Пока нет квартир</span>
+              )}
             </div>
           </div>
         </div>
@@ -280,13 +290,69 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
           </div>
         </div>
 
-        {/* Apartments Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredApartments.map((apt, index) => {
-            const totalPoints = apt.members.reduce((s, m) => s + m.totalPoints, 0);
-            const streak = Math.max(...apt.members.map((m) => m.streakDays));
-            const isCurrentApt = apt.id === activeApartment.id;
-            const isAuthorized = authorizedIds.includes(apt.id);
+        {/* Apartments Cards Grid or Empty State */}
+        {apartments.length === 0 ? (
+          <div className="text-center py-16 px-6 bg-slate-900/60 rounded-3xl border border-dashed border-slate-800 space-y-4">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-3xl">
+              🏢
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-white">В доме пока нет зарегистрированных квартир</h3>
+              <p className="text-slate-400 text-xs sm:text-sm max-w-md mx-auto">
+                Все квартиры были удалены дежурным. Лобби дома чистое и готово к заселению жильцов!
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              {onCreateApartment && (
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Заселить первую квартиру</span>
+                </button>
+              )}
+              {onRestoreDemo && (
+                <button
+                  type="button"
+                  onClick={onRestoreDemo}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Восстановить демо-квартиры (101–105)</span>
+                </button>
+              )}
+              {onOpenStarosta && (
+                <button
+                  type="button"
+                  onClick={onOpenStarosta}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-slate-200 border border-slate-800 text-xs font-medium flex items-center gap-2 cursor-pointer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Панель дежурного</span>
+                </button>
+              )}
+            </div>
+          </div>
+        ) : filteredApartments.length === 0 ? (
+          <div className="text-center py-12 px-4 bg-slate-900/40 rounded-2xl border border-slate-800 space-y-3">
+            <p className="text-slate-400 text-xs sm:text-sm">По запросу "{searchQuery}" квартиры не найдены.</p>
+            <button
+              type="button"
+              onClick={() => { setSearchQuery(''); setFilterType('all'); }}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-cyan-400 font-medium cursor-pointer"
+            >
+              Сбросить фильтр
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredApartments.map((apt, index) => {
+              const totalPoints = apt.members.reduce((s, m) => s + m.totalPoints, 0);
+              const streak = Math.max(...apt.members.map((m) => m.streakDays));
+              const isCurrentApt = activeApartment ? apt.id === activeApartment.id : false;
+              const isAuthorized = authorizedIds.includes(apt.id);
 
             return (
               <motion.div
@@ -464,6 +530,7 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
             );
           })}
         </div>
+      )}
       </div>
 
       {/* House Philosophy / Rules banner */}

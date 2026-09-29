@@ -39,6 +39,8 @@ interface StarostaModalProps {
   systemConfig: SystemConfig;
   onUpdateApartment: (updatedApt: Apartment) => Promise<void> | void;
   onDeleteApartment: (aptId: string) => Promise<void> | void;
+  onDeleteAllApartments?: () => Promise<void> | void;
+  onRestoreDemoApartments?: () => Promise<void> | void;
   onCreateApartment: (newApt: Partial<Apartment>) => Promise<void> | void;
   onUpdateSystemConfig: (newConfig: Partial<SystemConfig>) => Promise<void> | void;
   onSyncAll: () => Promise<void> | void;
@@ -54,6 +56,8 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
   systemConfig,
   onUpdateApartment,
   onDeleteApartment,
+  onDeleteAllApartments,
+  onRestoreDemoApartments,
   onCreateApartment,
   onUpdateSystemConfig,
   onSyncAll,
@@ -77,6 +81,11 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
   const [editingPinAptId, setEditingPinAptId] = useState<string | null>(null);
   const [newPinValue, setNewPinValue] = useState<string>('');
   const [revealedPins, setRevealedPins] = useState<Record<string, boolean>>({});
+
+  // Deletion confirmations state (in-UI, replaces window.confirm)
+  const [aptToDelete, setAptToDelete] = useState<Apartment | null>(null);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState<boolean>(false);
+  const [isDeletingProcess, setIsDeletingProcess] = useState<boolean>(false);
 
   // Editing Member states
   const [selectedAptForMember, setSelectedAptForMember] = useState<string>(apartments[0]?.id || '');
@@ -139,7 +148,7 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
   // Reset / Change Apartment PIN
   const handleSaveNewPin = async (apt: Apartment) => {
     if (!newPinValue || newPinValue.length < 3) {
-      alert('PIN-код должен быть не менее 3-4 цифр');
+      showToast('PIN-код должен быть не менее 3-4 цифр');
       return;
     }
     soundEffects.playClick();
@@ -153,14 +162,32 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
     showToast(`ПИН-код квартиры №${apt.apartmentNumber} успешно изменён на "${newPinValue}"!`);
   };
 
-  // Delete an apartment
-  const handleDeleteApartment = async (apt: Apartment) => {
-    const confirmDelete = window.confirm(`Вы уверены, что хотите удалить квартиру №${apt.apartmentNumber} (${apt.familyTitle}) из базы данных? Это действие необратимо.`);
-    if (!confirmDelete) return;
-
+  // Delete single apartment confirmed
+  const handleExecuteDeleteApartment = async () => {
+    if (!aptToDelete) return;
+    const apt = aptToDelete;
+    setIsDeletingProcess(true);
     soundEffects.playDoorClose();
     await onDeleteApartment(apt.id);
-    showToast(`Квартира №${apt.apartmentNumber} удалена из базы.`);
+    setIsDeletingProcess(false);
+    setAptToDelete(null);
+    showToast(`Квартира №${apt.apartmentNumber} (${apt.familyTitle}) удалена из базы.`);
+  };
+
+  // Delete all apartments confirmed
+  const handleExecuteDeleteAll = async () => {
+    setIsDeletingProcess(true);
+    soundEffects.playDoorClose();
+    if (onDeleteAllApartments) {
+      await onDeleteAllApartments();
+    } else {
+      for (const apt of apartments) {
+        await onDeleteApartment(apt.id);
+      }
+    }
+    setIsDeletingProcess(false);
+    setShowDeleteAllConfirm(false);
+    showToast('Все квартиры успешно удалены. База дома полностью очищена!');
   };
 
   // Save edited member
@@ -228,21 +255,18 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
     if (!apt) return;
 
     if (apt.members.length <= 1) {
-      alert('Нельзя удалить единственного жильца квартиры!');
+      showToast('Нельзя удалить единственного жильца квартиры!');
       return;
     }
-
-    const confirmDelete = window.confirm(`Удалить жильца ${memberName} из квартиры №${apt.apartmentNumber}?`);
-    if (!confirmDelete) return;
 
     const updatedApt: Apartment = {
       ...apt,
       members: apt.members.filter(m => m.id !== memberId)
     };
 
-    soundEffects.playClick();
+    soundEffects.playDoorClose();
     await onUpdateApartment(updatedApt);
-    showToast(`Пользователь ${memberName} удалён.`);
+    showToast(`Жилец ${memberName} удален из кв. №${apt.apartmentNumber}.`);
   };
 
   // Create apartment by Starosta
@@ -250,7 +274,7 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
     e.preventDefault();
     const aptNum = parseInt(newAptNumber);
     if (isNaN(aptNum) || !newAptFamily.trim() || !newAptM1.trim()) {
-      alert('Заполните номер квартиры, фамилию и хотя бы одного жильца.');
+      showToast('Заполните номер квартиры, фамилию и хотя бы одного жильца.');
       return;
     }
 
@@ -504,106 +528,174 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
               {/* TAB 1: APARTMENTS & PIN CODES */}
               {activeTab === 'apartments' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs sm:text-sm text-slate-300 font-medium">
-                      Всего квартир в базе: <span className="text-amber-400 font-bold">{apartments.length}</span>
-                    </p>
-                    <button
-                      onClick={handleTriggerSync}
-                      disabled={isSyncing}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 flex items-center gap-1.5 transition"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-400' : ''}`} />
-                      {isSyncing ? 'Синхронизация...' : 'Синхронизировать'}
-                    </button>
-                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-950/60 border border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-cyan-400" />
+                      <p className="text-xs sm:text-sm text-slate-300 font-medium">
+                        Квартир в базе: <span className="text-amber-400 font-bold">{apartments.length}</span>
+                      </p>
+                    </div>
 
-                  <div className="grid gap-3">
-                    {apartments.map((apt) => (
-                      <div 
-                        key={apt.id}
-                        className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {apartments.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowDeleteAllConfirm(true)}
+                          className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                          title="Удалить все квартиры из базы данных"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Удалить все квартиры</span>
+                        </button>
+                      )}
+
+                      {onRestoreDemoApartments && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await onRestoreDemoApartments();
+                            showToast('Демо-квартиры (101–105) восстановлены!');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 flex items-center gap-1.5 transition cursor-pointer"
+                          title="Восстановить начальные демо-квартиры"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Восстановить демо (101–105)</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleTriggerSync}
+                        disabled={isSyncing}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 flex items-center gap-1.5 transition cursor-pointer"
                       >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-400 font-bold text-sm">
-                              № {apt.apartmentNumber}
-                            </span>
-                            <span className="font-semibold text-white text-sm sm:text-base">
-                              {apt.familyTitle}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400">
-                            <span>Жильцов: {apt.members.length} ({apt.members.map(m => m.name).join(', ')})</span>
-                            <span>• Задач: {apt.tasks.length}</span>
-                          </div>
-                        </div>
-
-                        {/* PIN Code controls */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {editingPinAptId === apt.id ? (
-                            <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-amber-500/50">
-                              <input
-                                type="text"
-                                maxLength={6}
-                                value={newPinValue}
-                                onChange={(e) => setNewPinValue(e.target.value)}
-                                placeholder="Новый PIN"
-                                autoFocus
-                                className="w-24 text-center font-mono py-1 px-2 text-xs rounded-lg bg-slate-950 text-amber-300 border border-slate-700 focus:outline-none"
-                              />
-                              <button
-                                onClick={() => handleSaveNewPin(apt)}
-                                className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition"
-                                title="Сохранить"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setEditingPinAptId(null)}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 transition"
-                                title="Отмена"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
-                              <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                              <span className="text-xs text-slate-400">PIN:</span>
-                              <span className="font-mono font-bold text-xs text-amber-300">
-                                {revealedPins[apt.id] ? (apt.pinCode || 'Нет') : '••••'}
-                              </span>
-                              <button
-                                onClick={() => togglePinReveal(apt.id)}
-                                className="p-1 text-slate-400 hover:text-white transition"
-                                title="Показать/скрыть PIN"
-                              >
-                                {revealedPins[apt.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setEditingPinAptId(apt.id);
-                                  setNewPinValue(apt.pinCode || '1234');
-                                }}
-                                className="ml-1 text-xs text-cyan-400 hover:text-cyan-300 underline font-medium"
-                              >
-                                Сбросить
-                              </button>
-                            </div>
-                          )}
-
-                          <button
-                            onClick={() => handleDeleteApartment(apt)}
-                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition"
-                            title="Удалить квартиру"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-400' : ''}`} />
+                        {isSyncing ? 'Синхронизация...' : 'Синхронизировать'}
+                      </button>
+                    </div>
                   </div>
+
+                  {apartments.length === 0 ? (
+                    <div className="py-12 px-4 text-center rounded-2xl bg-slate-950/40 border border-dashed border-slate-800 space-y-3">
+                      <div className="text-3xl">🏢</div>
+                      <h4 className="text-sm font-bold text-white">В базе дома нет зарегистрированных квартир</h4>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                        Все квартиры удалены дежурным. Вы можете заселить новую квартиру во вкладке «Добавить квартиру» или восстановить тестовые демо-квартиры.
+                      </p>
+                      <div className="flex items-center justify-center gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('add_apt')}
+                          className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Добавить квартиру</span>
+                        </button>
+                        {onRestoreDemoApartments && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await onRestoreDemoApartments();
+                              showToast('Демо-квартиры (101–105) восстановлены!');
+                            }}
+                            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Восстановить демо</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {apartments.map((apt) => (
+                        <div 
+                          key={apt.id}
+                          className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-400 font-bold text-sm">
+                                № {apt.apartmentNumber}
+                              </span>
+                              <span className="font-semibold text-white text-sm sm:text-base">
+                                {apt.familyTitle}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400">
+                              <span>Жильцов: {apt.members.length} ({apt.members.map(m => m.name).join(', ')})</span>
+                              <span>• Задач: {apt.tasks.length}</span>
+                            </div>
+                          </div>
+
+                          {/* PIN Code controls */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {editingPinAptId === apt.id ? (
+                              <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-amber-500/50">
+                                <input
+                                  type="text"
+                                  maxLength={6}
+                                  value={newPinValue}
+                                  onChange={(e) => setNewPinValue(e.target.value)}
+                                  placeholder="Новый PIN"
+                                  autoFocus
+                                  className="w-24 text-center font-mono py-1 px-2 text-xs rounded-lg bg-slate-950 text-amber-300 border border-slate-700 focus:outline-none"
+                                />
+                                <button
+                                  onClick={() => handleSaveNewPin(apt)}
+                                  className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition"
+                                  title="Сохранить"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setEditingPinAptId(null)}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 transition"
+                                  title="Отмена"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+                                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                                <span className="text-xs text-slate-400">PIN:</span>
+                                <span className="font-mono font-bold text-xs text-amber-300">
+                                  {revealedPins[apt.id] ? (apt.pinCode || 'Нет') : '••••'}
+                                </span>
+                                <button
+                                  onClick={() => togglePinReveal(apt.id)}
+                                  className="p-1 text-slate-400 hover:text-white transition"
+                                  title="Показать/скрыть PIN"
+                                >
+                                  {revealedPins[apt.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditingPinAptId(apt.id);
+                                    setNewPinValue(apt.pinCode || '1234');
+                                  }}
+                                  className="ml-1 text-xs text-cyan-400 hover:text-cyan-300 underline font-medium"
+                                >
+                                  Сбросить
+                                </button>
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => setAptToDelete(apt)}
+                              className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition cursor-pointer"
+                              title="Удалить квартиру"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -870,10 +962,8 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                                   <button
                                     type="button"
                                     onClick={async () => {
-                                      if (window.confirm('Удалить это обращение из журнала?')) {
-                                        await onDeleteDutyMessage(msg.id);
-                                        showToast('Обращение удалено');
-                                      }
+                                      await onDeleteDutyMessage(msg.id);
+                                      showToast('Обращение удалено из журнала');
                                     }}
                                     className="text-rose-400 hover:text-rose-300 text-[11px] flex items-center gap-1 cursor-pointer"
                                   >
@@ -1224,6 +1314,100 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
             Закрыть
           </button>
         </div>
+
+        {/* Confirmation Modal for Single Apartment Deletion */}
+        {aptToDelete && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-slate-900 border border-rose-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-500/20 text-rose-400 rounded-2xl">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-white">
+                    Удалить квартиру №{aptToDelete.apartmentNumber}?
+                  </h3>
+                  <p className="text-xs text-slate-400">Семья: {aptToDelete.familyTitle}</p>
+                </div>
+              </div>
+
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Квартира, все её жильцы ({aptToDelete.members.length} чел.), задачи и очки будут безвозвратно удалены из базы дома.
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeletingProcess}
+                  onClick={() => setAptToDelete(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingProcess}
+                  onClick={handleExecuteDeleteApartment}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingProcess ? 'Удаление...' : 'Да, удалить квартиру'}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Confirmation Modal for Deleting ALL Apartments */}
+        {showDeleteAllConfirm && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-slate-900 border border-rose-600/60 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-500/20 text-rose-400 rounded-2xl">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-white">
+                    Удалить ВСЕ квартиры?
+                  </h3>
+                  <p className="text-xs text-rose-400 font-semibold">Очистка всей базы дома</p>
+                </div>
+              </div>
+
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Вы собираетесь полностью удалить все квартиры ({apartments.length} шт.) из базы данных. База станет полностью пустой для заселения реальных жильцов.
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeletingProcess}
+                  onClick={() => setShowDeleteAllConfirm(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingProcess}
+                  onClick={handleExecuteDeleteAll}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingProcess ? 'Очистка...' : `Да, удалить все (${apartments.length})`}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </motion.div>
     </div>
   );

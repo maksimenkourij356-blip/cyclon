@@ -112,6 +112,9 @@ export async function deleteApartmentFromCloud(apartmentId: string): Promise<boo
   try {
     const aptRef = doc(db, APARTMENTS_COLLECTION, apartmentId);
     await deleteDoc(aptRef);
+    // Mark initial_seed as completed so auto-seeding does not recreate deleted apartments
+    const metaRef = doc(db, SYSTEM_COLLECTION, 'initial_seed');
+    await setDoc(metaRef, { seeded: true, updatedAt: new Date().toISOString() }, { merge: true });
     return true;
   } catch (err) {
     console.error('[Firebase] Error deleting apartment from cloud:', err);
@@ -120,19 +123,69 @@ export async function deleteApartmentFromCloud(apartmentId: string): Promise<boo
 }
 
 /**
- * Seeds initial demo apartments into Firestore if the collection is currently empty.
+ * Deletes ALL apartments from Firestore (clean wipe by duty officer).
  */
-export async function seedCloudIfEmpty(): Promise<boolean> {
+export async function deleteAllApartmentsFromCloud(): Promise<boolean> {
   try {
     const aptsRef = collection(db, APARTMENTS_COLLECTION);
     const snapshot = await getDocs(aptsRef);
+    const deletePromises = snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref));
+    await Promise.all(deletePromises);
+
+    // Prevent auto-seed from repopulating after deliberate clearing
+    const metaRef = doc(db, SYSTEM_COLLECTION, 'initial_seed');
+    await setDoc(metaRef, { seeded: true, lastClearedAt: new Date().toISOString() }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('[Firebase] Error deleting all apartments from cloud:', err);
+    return false;
+  }
+}
+
+/**
+ * Restores initial demo apartments (101-105) into Firestore on demand.
+ */
+export async function restoreDemoApartmentsToCloud(): Promise<boolean> {
+  try {
+    for (const apt of INITIAL_APARTMENTS) {
+      const ref = doc(db, APARTMENTS_COLLECTION, apt.id);
+      await setDoc(ref, apt);
+    }
+    const metaRef = doc(db, SYSTEM_COLLECTION, 'initial_seed');
+    await setDoc(metaRef, { seeded: true, restoredAt: new Date().toISOString() }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('[Firebase] Error restoring demo apartments to cloud:', err);
+    return false;
+  }
+}
+
+/**
+ * Seeds initial demo apartments into Firestore ONLY ONCE on very first setup.
+ * Does not re-seed if the collection was deliberately cleared by the duty officer.
+ */
+export async function seedCloudIfEmpty(): Promise<boolean> {
+  try {
+    const metaRef = doc(db, SYSTEM_COLLECTION, 'initial_seed');
+    const metaSnap = await getDoc(metaRef);
+    if (metaSnap.exists() && metaSnap.data()?.seeded) {
+      // Cloud database was already initialized or deliberately cleared
+      return false;
+    }
+
+    const aptsRef = collection(db, APARTMENTS_COLLECTION);
+    const snapshot = await getDocs(aptsRef);
     if (snapshot.empty) {
-      console.log('[Firebase] Cloud database is empty. Seeding initial apartments...');
+      console.log('[Firebase] Cloud database is virgin. Seeding initial demo apartments...');
       for (const apt of INITIAL_APARTMENTS) {
         const ref = doc(db, APARTMENTS_COLLECTION, apt.id);
         await setDoc(ref, apt);
       }
+      await setDoc(metaRef, { seeded: true, seededAt: new Date().toISOString() });
       return true;
+    } else {
+      // Apartments already exist
+      await setDoc(metaRef, { seeded: true, markedAt: new Date().toISOString() }, { merge: true });
     }
     return false;
   } catch (err) {
