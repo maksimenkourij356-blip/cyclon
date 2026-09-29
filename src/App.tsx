@@ -57,7 +57,8 @@ import {
 import { 
   advanceApartmentDay, 
   checkApartmentDayAutoAdvance, 
-  getLocalTodayDateString 
+  getLocalTodayDateString,
+  getCurrentRealDayOfWeek
 } from './utils/dayCycle';
 
 export default function App() {
@@ -262,7 +263,7 @@ export default function App() {
       familyTitle: newAptData.familyTitle || 'Новая семья',
       config,
       members: newAptData.members || [],
-      cycleDay: 1,
+      cycleDay: newAptData.cycleDay || getCurrentRealDayOfWeek(),
       cycleStartDate: todayStr,
       lastActiveCalendarDate: todayStr,
       coopTargetPoints: 1000,

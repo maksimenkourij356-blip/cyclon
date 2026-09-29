@@ -1,5 +1,17 @@
 import { Apartment, CleaningTask } from '../types';
 
+export const WEEKDAY_NAMES_RU = [
+  'Понедельник',
+  'Вторник',
+  'Среда',
+  'Четверг',
+  'Пятница',
+  'Суббота',
+  'Воскресенье',
+];
+
+export const WEEKDAY_SHORT_RU = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
 /**
  * Returns today's date in local YYYY-MM-DD format,
  * respecting the user's actual local midnight.
@@ -10,6 +22,47 @@ export function getLocalTodayDateString(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns the ISO day of week for today:
+ * 1 = Monday, 2 = Tuesday, ..., 7 = Sunday
+ */
+export function getCurrentRealDayOfWeek(): number {
+  const jsDay = new Date().getDay(); // 0 is Sunday, 1 is Monday ...
+  return jsDay === 0 ? 7 : jsDay;
+}
+
+/**
+ * Returns the Russian name of the weekday for a cycle day (1 to 28).
+ * In 28-day cycle:
+ * Days 1, 8, 15, 22 -> Понедельник
+ * Days 2, 9, 16, 23 -> Вторник
+ * ...
+ * Days 7, 14, 21, 28 -> Воскресенье
+ */
+export function getWeekdayNameForCycleDay(cycleDay: number): string {
+  const idx = ((cycleDay - 1) % 7 + 7) % 7;
+  return WEEKDAY_NAMES_RU[idx];
+}
+
+/**
+ * Returns short abbreviation (Пн, Вт, etc.) for a cycle day.
+ */
+export function getWeekdayShortForCycleDay(cycleDay: number): string {
+  const idx = ((cycleDay - 1) % 7 + 7) % 7;
+  return WEEKDAY_SHORT_RU[idx];
+}
+
+/**
+ * Aligns a cycle day to the current real calendar day of the week,
+ * preserving the apartment's current week (1..4).
+ * Example: if an apartment was on week 2 and today is Tuesday, it becomes Day 9.
+ */
+export function alignCycleDayToRealWeekday(currentCycleDay: number): number {
+  const weekIdx = Math.floor((currentCycleDay - 1) / 7); // 0, 1, 2, 3
+  const realIsoWeekday = getCurrentRealDayOfWeek(); // 1..7 (2 for Tuesday)
+  return Math.min(28, Math.max(1, weekIdx * 7 + realIsoWeekday));
 }
 
 export interface DayAdvanceResult {
@@ -126,14 +179,35 @@ export interface AutoAdvanceCheckResult {
 }
 
 /**
- * Checks if the calendar date has advanced past apt.lastActiveCalendarDate.
- * If a new day or multiple days have passed, automatically calculates the next cycleDay,
+ * Checks if the calendar date has advanced or if the cycleDay is desynchronized with today's real weekday.
+ * Automatically aligns and calculates the next cycleDay,
  * moves yesterday's uncompleted tasks to debts, and refreshes daily rituals.
  */
 export function checkApartmentDayAutoAdvance(apt: Apartment): AutoAdvanceCheckResult {
   const todayStr = getLocalTodayDateString();
+  const realIsoWeekday = getCurrentRealDayOfWeek();
+  const currentCycleWeekday = ((apt.cycleDay - 1) % 7) + 1;
 
-  // If apartment has no calendar date saved yet, initialize it with today's date
+  // If apartment weekday is out of sync with real calendar weekday (e.g. shows Friday on a Tuesday):
+  // Align it immediately to match the real weekday within its current week!
+  if (currentCycleWeekday !== realIsoWeekday) {
+    const alignedDay = alignCycleDayToRealWeekday(apt.cycleDay);
+    const { updatedApt, movedCount, missedRitualMessages } = advanceApartmentDay(
+      apt,
+      alignedDay,
+      todayStr
+    );
+    return {
+      updatedApt,
+      shouldUpdate: true,
+      advanced: true,
+      daysAdvanced: Math.abs(alignedDay - apt.cycleDay),
+      movedCount,
+      missedRitualMessages,
+    };
+  }
+
+  // If apartment has no calendar date saved yet, save today's date
   if (!apt.lastActiveCalendarDate) {
     return {
       updatedApt: { ...apt, lastActiveCalendarDate: todayStr },
@@ -145,7 +219,7 @@ export function checkApartmentDayAutoAdvance(apt: Apartment): AutoAdvanceCheckRe
     };
   }
 
-  // Already checked for today
+  // Already checked and aligned for today
   if (apt.lastActiveCalendarDate === todayStr) {
     return {
       updatedApt: apt,
@@ -157,15 +231,15 @@ export function checkApartmentDayAutoAdvance(apt: Apartment): AutoAdvanceCheckRe
     };
   }
 
-  // Calendar day has advanced!
+  // Calendar day has advanced past apt.lastActiveCalendarDate (e.g. midnight passed)
   if (apt.lastActiveCalendarDate < todayStr) {
     const d1 = new Date(apt.lastActiveCalendarDate + 'T00:00:00');
     const d2 = new Date(todayStr + 'T00:00:00');
     const diffMs = d2.getTime() - d1.getTime();
     const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
 
-    // 28-day cyclic modulo
-    const targetCycleDay = ((apt.cycleDay - 1 + diffDays) % 28) + 1;
+    // 28-day cyclic modulo aligned with real weekday
+    const targetCycleDay = alignCycleDayToRealWeekday(((apt.cycleDay - 1 + diffDays) % 28) + 1);
 
     const { updatedApt, movedCount, missedRitualMessages } = advanceApartmentDay(
       apt,
@@ -183,7 +257,7 @@ export function checkApartmentDayAutoAdvance(apt: Apartment): AutoAdvanceCheckRe
     };
   }
 
-  // Future date (e.g. system clock was rolled back), just sync date
+  // Future date fallback
   return {
     updatedApt: { ...apt, lastActiveCalendarDate: todayStr },
     shouldUpdate: true,

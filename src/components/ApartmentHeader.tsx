@@ -17,6 +17,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { Apartment, HouseholdMember } from '../types';
+import { getWeekdayNameForCycleDay } from '../utils/dayCycle';
 
 interface ApartmentHeaderProps {
   apartment: Apartment;
@@ -102,7 +103,7 @@ export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <p className="text-xs text-slate-400">
-                День {apartment.cycleDay} из 28 · Стрик: {currentStreak} дн. 🔥
+                День {apartment.cycleDay} из 28 ({getWeekdayNameForCycleDay(apartment.cycleDay)}) · Стрик: {currentStreak} дн. 🔥
               </p>
               <div className="flex items-center gap-1 text-[11px]">
                 <span className="px-2 py-0.5 rounded-md bg-slate-950/80 border border-slate-700/80 text-slate-300">

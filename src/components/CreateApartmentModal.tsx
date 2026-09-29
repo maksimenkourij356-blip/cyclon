@@ -13,11 +13,17 @@ import {
   Check, 
   UtensilsCrossed, 
   ShieldCheck,
-  HeartHandshake
+  HeartHandshake,
+  Calendar
 } from 'lucide-react';
 import { Apartment, ApartmentConfig, HouseholdMember } from '../types';
 import { soundEffects } from '../utils/audio';
 import { getNextAvailableApartmentNumber } from '../utils/storage';
+import { 
+  getCurrentRealDayOfWeek, 
+  getWeekdayNameForCycleDay, 
+  WEEKDAY_NAMES_RU 
+} from '../utils/dayCycle';
 
 interface CreateApartmentModalProps {
   isOpen: boolean;
@@ -33,10 +39,13 @@ export const CreateApartmentModal: React.FC<CreateApartmentModalProps> = ({
   onCreateApartment,
 }) => {
   const suggestedNum = getNextAvailableApartmentNumber(existingApartments);
+  const todayIsoWeekday = getCurrentRealDayOfWeek(); // 2 for Tuesday
+  const todayWeekdayName = WEEKDAY_NAMES_RU[todayIsoWeekday - 1]; // "Вторник"
 
   const [apartmentNumber, setApartmentNumber] = useState<number>(suggestedNum);
   const [familyTitle, setFamilyTitle] = useState('');
   const [pinCode, setPinCode] = useState('');
+  const [startDayChoice, setStartDayChoice] = useState<'weekday' | 'day1'>('weekday');
   const [partner1Name, setPartner1Name] = useState('');
   const [partner2Name, setPartner2Name] = useState('');
   const [petType, setPetType] = useState<ApartmentConfig['petType']>('cat');
@@ -122,6 +131,7 @@ export const CreateApartmentModal: React.FC<CreateApartmentModalProps> = ({
       pinCode,
       config,
       members,
+      cycleDay: startDayChoice === 'weekday' ? todayIsoWeekday : 1,
       coopRewardTitle: coopReward.trim() || 'Семейный ужин 🎉',
     });
 
@@ -219,6 +229,53 @@ export const CreateApartmentModal: React.FC<CreateApartmentModalProps> = ({
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-white text-sm"
               placeholder="Например: Семья Ивановых или Максим и Анна"
             />
+          </div>
+
+          {/* Cycle start day synchronized with real calendar */}
+          <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                Старт 28-дневного цикла:
+              </span>
+              <span className="text-[11px] text-slate-400">Сегодня: {todayWeekdayName}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setStartDayChoice('weekday')}
+                className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                  startDayChoice === 'weekday'
+                    ? 'bg-cyan-500/20 border-cyan-400 text-white font-bold ring-1 ring-cyan-400/50'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="text-cyan-300 flex items-center justify-between">
+                  <span>День {todayIsoWeekday} ({todayWeekdayName})</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/30 text-cyan-200">Рекомендуется</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-normal mt-1 leading-snug">
+                  В точном синхроне с календарём: задачи на сегодня сразу актуальны
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStartDayChoice('day1')}
+                className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                  startDayChoice === 'day1'
+                    ? 'bg-cyan-500/20 border-cyan-400 text-white font-bold ring-1 ring-cyan-400/50'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="text-slate-200">
+                  <span>День 1 (Понедельник)</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-normal mt-1 leading-snug">
+                  С самого начала первой недели (без привязки к дню недели)
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Household members */}

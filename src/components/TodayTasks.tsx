@@ -19,6 +19,7 @@ import {
   HeartHandshake
 } from 'lucide-react';
 import { CleaningTask, HouseholdMember, DisgustFactor } from '../types';
+import { getWeekdayNameForCycleDay } from '../utils/dayCycle';
 
 interface TodayTasksProps {
   tasks: CleaningTask[];
@@ -95,7 +96,7 @@ export const TodayTasks: React.FC<TodayTasksProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold font-mono">
-              ДЕНЬ {cycleDay} ИЗ 28
+              ДЕНЬ {cycleDay} ИЗ 28 · {getWeekdayNameForCycleDay(cycleDay).toUpperCase()}
             </span>
             <span className="text-xs text-slate-400 font-medium">
               {isWeekend ? '⚡ Выходной день (утренний слот)' : '🌙 Будний день (вечерний слот)'}
