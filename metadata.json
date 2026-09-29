@@ -1,0 +1,6 @@
+{
+  "name": "ЦИКЛON! 🌀",
+  "description": "Веб-сервис организации домашней уборки вдвоём по 28-дневному циклу с кодами квартир-домофонов, рейтингом дома и свободным рынком задач.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
