@@ -14,7 +14,6 @@ import {
   Eye, 
   EyeOff, 
   AlertTriangle,
-  Crown,
   Sparkles,
   Lock,
   Unlock,
@@ -102,7 +101,7 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
       setPinError('');
     } else {
       soundEffects.playError();
-      setPinError('Неверный PIN-код Старосты! (По умолчанию: 7777)');
+      setPinError('Неверный PIN-код дежурного! (По умолчанию: 7777)');
     }
   };
 
@@ -275,15 +274,15 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
     setNewAptM1('');
     setNewAptM2('');
     setActiveTab('apartments');
-    showToast(`Квартира №${aptNum} (${newAptFamily}) успешно создана Старостой!`);
+    showToast(`Квартира №${aptNum} (${newAptFamily}) успешно создана в базе!`);
   };
 
-  // Save Starosta master settings
+  // Save House Duty master settings
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     soundEffects.playClick();
     const updates: Partial<SystemConfig> = {
-      starostaName: newStarostaName.trim() || 'Максим (Староста)',
+      starostaName: newStarostaName.trim() || 'Дежурный по дому',
       announcement: newAnnouncement.trim()
     };
     if (newMasterPin.trim()) {
@@ -291,7 +290,7 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
     }
     await onUpdateSystemConfig(updates);
     setNewMasterPin('');
-    showToast('Настройки Старосты успешно сохранены в облаке!');
+    showToast('Настройки дежурного успешно сохранены в облаке!');
   };
 
   const handleTriggerSync = async () => {
@@ -318,15 +317,15 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
         className="relative w-full max-w-2xl bg-slate-900 border border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-amber-950/40 p-4 sm:p-5 border-b border-amber-500/30 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 p-4 sm:p-5 border-b border-cyan-500/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-inner">
-              <Crown className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-inner">
+              <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-bold text-amber-300">
-                  Кабинет Старосты Дома
+                <h2 className="text-lg sm:text-xl font-bold text-white">
+                  Дежурный по дому
                 </h2>
                 <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                   <Radio className="w-3 h-3 animate-pulse" />
@@ -366,14 +365,14 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
           {!isAuthenticated ? (
             /* PIN Protection Screen */
             <div className="py-6 flex flex-col items-center justify-center text-center space-y-5">
-              <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl">
+              <div className="w-16 h-16 rounded-3xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-xl">
                 <Lock className="w-8 h-8" />
               </div>
               
               <div className="max-w-md space-y-1.5">
-                <h3 className="text-lg font-bold text-white">Вход для Старосты (Максим)</h3>
+                <h3 className="text-lg font-bold text-white">Дежурный по дому</h3>
                 <p className="text-xs text-slate-400">
-                  Доступ к управлению базой данных защищён мастер-кодом Старосты.
+                  Доступ к управлению базой данных защищён PIN-кодом (7777).
                 </p>
               </div>
 
@@ -387,9 +386,9 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                       setEnteredPin(e.target.value);
                       setPinError('');
                     }}
-                    placeholder="Мастер-PIN"
+                    placeholder="PIN (7777)"
                     autoFocus
-                    className="w-full text-center text-2xl tracking-[0.3em] font-mono py-3 px-4 rounded-2xl bg-slate-950 border border-amber-500/40 text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full text-center text-2xl tracking-[0.3em] font-mono py-3 px-4 rounded-2xl bg-slate-950 border border-cyan-500/40 text-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   />
                   {pinError ? (
                     <p className="text-xs text-rose-400 mt-2 flex items-center justify-center gap-1">
@@ -398,17 +397,17 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                     </p>
                   ) : (
                     <p className="text-xs text-slate-500 mt-2">
-                      По умолчанию: <span className="font-mono text-amber-400 font-semibold">7777</span>
+                      По умолчанию: <span className="font-mono text-cyan-400 font-semibold">7777</span>
                     </p>
                   )}
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition"
+                  className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 transition"
                 >
                   <Unlock className="w-4 h-4" />
-                  Открыть кабинет Старосты
+                  Войти на пульт дежурного
                 </button>
               </form>
             </div>
@@ -743,16 +742,16 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                 </div>
               )}
 
-              {/* TAB 3: CREATE APARTMENT BY STAROSTA */}
+              {/* TAB 3: CREATE APARTMENT BY HOUSE DUTY */}
               {activeTab === 'add_apt' && (
                 <form onSubmit={handleCreateAptSubmit} className="space-y-4">
-                  <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/30">
-                    <h4 className="text-xs sm:text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                  <div className="p-3.5 rounded-2xl bg-cyan-950/20 border border-cyan-500/30">
+                    <h4 className="text-xs sm:text-sm font-bold text-cyan-300 flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4" />
-                      Быстрая регистрация квартиры Старостой
+                      Быстрая регистрация квартиры
                     </h4>
                     <p className="text-xs text-slate-400 mt-1">
-                      Староста может создать квартиру напрямую без прохождения полного опросника. Задачи и бейджи сгенерируются автоматически!
+                      Дежурный по дому может создать квартиру напрямую без прохождения полного опросника. Задачи и бейджи сгенерируются автоматически!
                     </p>
                   </div>
 
@@ -828,18 +827,19 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                 <form onSubmit={handleSaveSettings} className="space-y-4">
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs text-slate-300 font-medium block mb-1">Имя Старосты:</label>
+                      <label className="text-xs text-slate-300 font-medium block mb-1">Подпись в объявлениях:</label>
                       <input
                         type="text"
                         value={newStarostaName}
                         onChange={(e) => setNewStarostaName(e.target.value)}
+                        placeholder="Дежурный по дому"
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white"
                       />
                     </div>
 
                     <div>
                       <label className="text-xs text-slate-300 font-medium block mb-1">
-                        Новый мастер-PIN Старосты:
+                        Новый PIN дежурного (по умолчанию 7777):
                       </label>
                       <input
                         type="password"
@@ -849,7 +849,7 @@ export const StarostaModal: React.FC<StarostaModalProps> = ({
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white font-mono"
                       />
                       <p className="text-[10px] text-slate-500 mt-1">
-                        По этому коду вы входите в данный кабинет управления.
+                        По этому коду открывается пульт дежурного (также можно набрать 7777 в домофоне).
                       </p>
                     </div>
 

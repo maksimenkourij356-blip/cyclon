@@ -110,8 +110,8 @@ export interface BuildingStats {
 }
 
 export interface SystemConfig {
-  starostaPin: string; // Master pin to access Starosta panel, default "7777"
-  starostaName: string; // Default: "Максим (Староста)"
+  starostaPin: string; // Master pin to access Duty officer panel, default "7777"
+  starostaName: string; // Default: "Дежурный по дому"
   houseName: string; // Default: "ЖК ЦИКЛON"
   announcement?: string;
   lastUpdated?: string;

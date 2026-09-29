@@ -14,8 +14,7 @@ import {
   Settings2,
   BookOpen,
   Eye,
-  EyeOff,
-  Crown
+  EyeOff
 } from 'lucide-react';
 import { Apartment, HouseholdMember } from '../types';
 
@@ -149,11 +148,10 @@ export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
           {onOpenStarosta && (
             <button
               onClick={onOpenStarosta}
-              className="p-2.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-              title="Кабинет Старосты (Максим): сброс PIN-кодов, управление базой"
+              className="p-2.5 rounded-2xl text-slate-600 hover:text-slate-400 opacity-25 hover:opacity-100 transition-opacity cursor-pointer"
+              aria-label="Служба дома"
             >
-              <Crown className="w-4 h-4 text-amber-400" />
-              <span className="hidden xl:inline">Староста</span>
+              <KeyRound className="w-3.5 h-3.5" />
             </button>
           )}
 

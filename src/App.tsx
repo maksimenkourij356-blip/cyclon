@@ -9,6 +9,7 @@ import {
   Flame,
   CheckCircle2,
   BookOpen,
+  ShieldCheck,
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -1096,8 +1097,17 @@ export default function App() {
             <span className="font-bold text-slate-300">ЦИКЛON! 🌀</span>
             <span>— «Уборка всегда ON»</span>
           </div>
-          <div className="text-slate-400 text-[11px]">
-            Модель 28-дневного цикла · Будни ≤ 15 мин · Выходные ≤ 30 мин · Защита от выгорания
+          <div className="flex items-center gap-3 text-slate-400 text-[11px]">
+            <span>Модель 28-дневного цикла · Будни ≤ 15 мин · Выходные ≤ 30 мин · Защита от выгорания</span>
+            <button
+              type="button"
+              onClick={() => setIsStarostaOpen(true)}
+              className="p-1 rounded text-slate-700 hover:text-slate-500 opacity-20 hover:opacity-100 transition-opacity cursor-pointer"
+              title=""
+              aria-label="Служебный вход"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </footer>

@@ -18,8 +18,7 @@ import {
   LogOut,
   Hash,
   AtSign,
-  History,
-  Crown
+  History
 } from 'lucide-react';
 import { soundEffects } from '../utils/audio';
 import { Apartment, ApartmentConfig, SystemConfig } from '../types';
@@ -408,15 +407,29 @@ export const IntercomModal: React.FC<IntercomModalProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => {
-                if (onClearTargetApartment) onClearTargetApartment();
-                onClose();
-              }}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              {onOpenStarosta && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenStarosta();
+                  }}
+                  className="w-2.5 h-2.5 rounded-full bg-slate-700/60 hover:bg-slate-500 transition-colors opacity-30 hover:opacity-90 cursor-pointer mr-1"
+                  aria-label="Сервисный вход"
+                  title=""
+                />
+              )}
+              <button
+                onClick={() => {
+                  if (onClearTargetApartment) onClearTargetApartment();
+                  onClose();
+                }}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Tab Selector */}
@@ -707,21 +720,6 @@ export const IntercomModal: React.FC<IntercomModalProps> = ({
                     </div>
                   </div>
                 )}
-
-                {/* Starosta & Forgotten PIN helper */}
-                {onOpenStarosta && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenStarosta();
-                    }}
-                    className="w-full py-2.5 px-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer"
-                  >
-                    <Crown className="w-4 h-4 text-amber-400" />
-                    <span>Забыли PIN? / Кабинет Старосты Дома (Максим) 🔑</span>
-                  </button>
-                )}
               </div>
             </div>
           ) : (
@@ -845,7 +843,7 @@ export const IntercomModal: React.FC<IntercomModalProps> = ({
                       </label>
                       <input
                         type="text"
-                        placeholder="Максим"
+                        placeholder="Алексей"
                         value={formMember1}
                         onChange={(e) => setFormMember1(e.target.value)}
                         className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs text-white placeholder-slate-500"

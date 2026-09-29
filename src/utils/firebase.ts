@@ -47,7 +47,7 @@ const SYSTEM_CONFIG_DOC = 'starosta_config';
 
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   starostaPin: '7777',
-  starostaName: 'Максим (Староста)',
+  starostaName: 'Дежурный по дому',
   houseName: 'ЖК ЦИКЛON 🌀',
   announcement: 'Добро пожаловать в единую систему чистоты дома!',
 };

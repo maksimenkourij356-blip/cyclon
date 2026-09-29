@@ -14,7 +14,8 @@ import {
   BookOpen,
   Lock,
   Search,
-  Crown
+  KeyRound,
+  Radio
 } from 'lucide-react';
 import { Apartment, SystemConfig } from '../types';
 import { getAuthorizedApartmentIds } from '../utils/storage';
@@ -99,7 +100,18 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
           <div className="space-y-3 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold tracking-wide">
               <Building2 className="w-3.5 h-3.5" />
-              ЖК «ЧИСТЫЙ ГОРИЗОНТ» · ЕДИНЫЙ ПОДЪЕЗД
+              <span>ЖК «ЧИСТЫЙ ГОРИЗОНТ» · ЕДИНЫЙ ПОДЪЕЗД</span>
+              {onOpenStarosta && (
+                <button
+                  type="button"
+                  onClick={onOpenStarosta}
+                  className="ml-1 text-slate-500 hover:text-cyan-400 opacity-20 hover:opacity-90 transition-opacity p-0.5 rounded cursor-pointer"
+                  title=""
+                  aria-label="Служебный вход"
+                >
+                  <KeyRound className="w-3 h-3" />
+                </button>
+              )}
             </div>
             <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
               Рейтинг чистоты квартир <br />
@@ -140,26 +152,16 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
                 <span>Как это работает? Гид и правила 📖</span>
               </button>
             )}
-
-            {onOpenStarosta && (
-              <button
-                onClick={onOpenStarosta}
-                className="px-6 py-3 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 hover:text-amber-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                <Crown className="w-4 h-4 text-amber-400" />
-                <span>Кабинет Старосты (Максим) 👑</span>
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Announcement from Starosta */}
+        {/* Announcement from House Duty */}
         {systemConfig?.announcement && (
-          <div className="mt-4 p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-start gap-3">
-            <Crown className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="mt-4 p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 flex items-start gap-3">
+            <Radio className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
             <div className="text-xs">
-              <span className="font-bold text-amber-300 mr-2">{systemConfig.starostaName || 'Староста дома'}:</span>
-              <span className="text-amber-100">{systemConfig.announcement}</span>
+              <span className="font-bold text-cyan-300 mr-2">{systemConfig.starostaName || 'Дежурный по дому'}:</span>
+              <span className="text-slate-200">{systemConfig.announcement}</span>
             </div>
           </div>
         )}
@@ -471,6 +473,24 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Discreet Lobby Footer */}
+      <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-500">
+        <div className="flex items-center gap-2">
+          <span>ЖК «Чистый горизонт» · Единая система чистоты</span>
+        </div>
+        {onOpenStarosta && (
+          <button
+            type="button"
+            onClick={onOpenStarosta}
+            className="p-1 rounded text-slate-700 hover:text-slate-500 opacity-20 hover:opacity-100 transition-opacity cursor-pointer"
+            title=""
+            aria-label="Служебный вход"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
