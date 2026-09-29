@@ -54,6 +54,11 @@ import {
   saveSystemConfig, 
   DEFAULT_SYSTEM_CONFIG 
 } from './utils/firebase';
+import { 
+  advanceApartmentDay, 
+  checkApartmentDayAutoAdvance, 
+  getLocalTodayDateString 
+} from './utils/dayCycle';
 
 export default function App() {
   const [apartments, setApartments] = useState<Apartment[]>(() => loadApartments());
@@ -130,6 +135,60 @@ export default function App() {
     };
   }, []);
 
+  // Automatic day advancement across calendar days (midnight check & periodic poll)
+  useEffect(() => {
+    const runAutoAdvanceCheck = () => {
+      setApartments((prevApts) => {
+        let anyChanged = false;
+        const updatedApts = prevApts.map((apt) => {
+          const res = checkApartmentDayAutoAdvance(apt);
+          if (res.shouldUpdate) {
+            anyChanged = true;
+            syncApartmentToCloud(res.updatedApt);
+
+            // If active apartment advanced to a new day, celebrate & inform user
+            if (apt.id === activeAptId && res.advanced) {
+              soundEffects.playVictory();
+              setDaySwitchToast({
+                message: `Наступил новый день (День ${res.updatedApt.cycleDay} цикла)! Ежедневные рутины сброшены, вчерашние незакрытые задачи перенесены в долги без штрафов 🕊️`,
+                debtsCount: res.movedCount,
+                targetDay: res.updatedApt.cycleDay,
+                missedRituals: res.missedRitualMessages,
+                allRitualsDone: res.missedRitualMessages.length === 0,
+              });
+              setTimeout(() => {
+                setDaySwitchToast(null);
+              }, 8000);
+            }
+            return res.updatedApt;
+          }
+          return apt;
+        });
+
+        return anyChanged ? updatedApts : prevApts;
+      });
+    };
+
+    // Run on initial load
+    runAutoAdvanceCheck();
+
+    // Check periodically (every 30s) so if the tab is left open past midnight, it advances seamlessly
+    const intervalId = setInterval(runAutoAdvanceCheck, 30000);
+
+    // Also check on tab refocus
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        runAutoAdvanceCheck();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activeAptId]);
+
   // Ensure active apartment ID is valid
   useEffect(() => {
     if (apartments.length > 0 && !apartments.find((a) => a.id === activeAptId)) {
@@ -193,6 +252,7 @@ export default function App() {
     const generatedBadges = generateBadgesForConfig(config, true); // new apartment starts with clean progress
 
     const aptId = newAptData.id || `apt-${newAptData.apartmentNumber || Date.now()}-${Date.now()}`;
+    const todayStr = getLocalTodayDateString();
     const newApt: Apartment = {
       id: aptId,
       handle: newAptData.handle || 'family',
@@ -203,10 +263,11 @@ export default function App() {
       config,
       members: newAptData.members || [],
       cycleDay: 1,
-      cycleStartDate: new Date().toISOString().split('T')[0],
+      cycleStartDate: todayStr,
+      lastActiveCalendarDate: todayStr,
       coopTargetPoints: 1000,
       coopCurrentPoints: 0,
-      coopRewardTitle: 'Семейный ужин / Отдых 🎉',
+      coopRewardTitle: newAptData.coopRewardTitle || 'Семейный ужин / Отдых 🎉',
       tasks: generatedTasks,
       debts: [],
       badges: generatedBadges,
@@ -214,9 +275,11 @@ export default function App() {
       settings: { allowPwaPush: true, vacationMode: false },
     };
 
+    authorizeApartment(newApt.id);
     setApartments((prev) => [newApt, ...prev]);
     syncApartmentToCloud(newApt);
     handleSelectApartment(newApt);
+    setCurrentView('apartment');
   };
 
   const handleSaveApartmentConfig = (newConfig: ApartmentConfig, regenerateTasks: boolean) => {
@@ -679,100 +742,26 @@ export default function App() {
     soundEffects.playKeypadTone('5');
 
     let movedCount = 0;
-    const missedRitualMessages: string[] = [];
+    let missedRitualMessages: string[] = [];
     let hadRitualsYesterday = false;
+    let targetUpdatedApt: Apartment | null = null;
 
     setApartments((prev) =>
       prev.map((apt) => {
         if (apt.id !== activeApartment.id) return apt;
 
-        const oldDay = apt.cycleDay;
-
-        // 1. Check yesterday's daily rituals (category === 'ritual')
-        const yesterdayRituals = apt.tasks.filter((t) => t.category === 'ritual');
-        hadRitualsYesterday = yesterdayRituals.length > 0;
-        const uncompletedRituals = yesterdayRituals.filter((t) => t.status !== 'completed');
-
-        // Build friendly humor reminders for uncompleted rituals (they do NOT go to debts)
-        uncompletedRituals.forEach((r) => {
-          const id = r.id.toLowerCase();
-          const title = r.title.toLowerCase();
-          if (id.includes('kitchen') || id.includes('dishes') || title.includes('посуд') || title.includes('кухн')) {
-            missedRitualMessages.push('Эх, вчера посуда осталась немытой 🧽');
-          } else if (id.includes('cat') || title.includes('кошк') || title.includes('кот')) {
-            missedRitualMessages.push('Эх, вчера у кошки остался грязный туалет 🐱');
-          } else if (id.includes('dog') || title.includes('собак')) {
-            missedRitualMessages.push('Эх, вчера лапомойка и миски собаки остались без внимания 🐕');
-          } else if (id.includes('trash') || title.includes('мусор')) {
-            missedRitualMessages.push('Эх, вчера мусор остался стоять дома 🗑️');
-          } else {
-            missedRitualMessages.push(`Эх, вчера ежедневная рутина «${r.title}» осталась невыполненной 🧹`);
-          }
-        });
-
-        // 2. Collect uncompleted NON-RITUAL planned tasks scheduled for the day(s) being left behind -> to DEBTS
-        const uncompletedPlanned = apt.tasks.filter((t) => {
-          if (t.category === 'ritual') return false; // Daily rituals do NOT accumulate in debts!
-          if (!t.dayOfCycle) return false;
-          if (t.status === 'completed') return false;
-
-          // If moving forward in time (e.g. Day 1 -> Day 3), collect all uncompleted tasks between oldDay and newDay - 1
-          if (newDay > oldDay) {
-            return t.dayOfCycle >= oldDay && t.dayOfCycle < newDay;
-          }
-          // If moving to any other day, collect uncompleted tasks of current day
-          return t.dayOfCycle === oldDay;
-        });
-
-        // Prepare new debts, avoiding duplicates
-        const existingDebtIds = new Set(apt.debts.map((d) => d.id));
-        const originalDebtTaskIds = new Set(apt.debts.map((d) => d.id.replace(/^debt-/, '')));
-
-        const newDebtsToAdd: CleaningTask[] = [];
-
-        uncompletedPlanned.forEach((t) => {
-          const debtId = t.id.startsWith('debt-') ? t.id : `debt-${t.id}`;
-          if (!existingDebtIds.has(debtId) && !originalDebtTaskIds.has(t.id)) {
-            newDebtsToAdd.push({
-              ...t,
-              id: debtId,
-              description: `${t.description} (с Дня ${t.dayOfCycle})`,
-              status: 'available',
-              takenBy: undefined, // free for any partner to take in debts
-            });
-          }
-        });
-
-        movedCount = newDebtsToAdd.length;
-
-        // Remove the moved tasks from apt.tasks so they live exclusively in apt.debts
-        const movedTaskIds = new Set(uncompletedPlanned.map((t) => t.id));
-        const remainingTasks = apt.tasks.filter((t) => !movedTaskIds.has(t.id));
-
-        // 3. CRITICAL: RESET ALL DAILY RITUALS FOR THE NEW DAY!
-        // Every daily ritual is refreshed to 'available' with fresh status for the new day
-        const refreshedTasks = remainingTasks.map((t) => {
-          if (t.category === 'ritual') {
-            return {
-              ...t,
-              status: 'available' as const,
-              takenBy: undefined,
-              completedBy: undefined,
-              completedAt: undefined,
-              pointsSnapshot: undefined,
-            };
-          }
-          return t;
-        });
-
-        return {
-          ...apt,
-          cycleDay: newDay,
-          tasks: refreshedTasks,
-          debts: [...newDebtsToAdd, ...apt.debts],
-        };
+        hadRitualsYesterday = apt.tasks.filter((t) => t.category === 'ritual').length > 0;
+        const res = advanceApartmentDay(apt, newDay, getLocalTodayDateString());
+        movedCount = res.movedCount;
+        missedRitualMessages = res.missedRitualMessages;
+        targetUpdatedApt = res.updatedApt;
+        return res.updatedApt;
       })
     );
+
+    if (targetUpdatedApt) {
+      syncApartmentToCloud(targetUpdatedApt);
+    }
 
     if (movedCount > 0) {
       soundEffects.playKeypadTone('clear');
@@ -1000,6 +989,7 @@ export default function App() {
                 onOpenGuide={() => setCurrentView('guide')}
                 onAttemptEnterApartment={handleAttemptEnterApartment}
                 onOpenStarosta={() => setIsStarostaOpen(true)}
+                onCreateApartment={handleCreateApartment}
                 systemConfig={systemConfig}
               />
             </motion.div>

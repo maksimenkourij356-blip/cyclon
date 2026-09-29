@@ -15,10 +15,12 @@ import {
   Lock,
   Search,
   KeyRound,
-  Radio
+  Radio,
+  Plus
 } from 'lucide-react';
 import { Apartment, SystemConfig } from '../types';
 import { getAuthorizedApartmentIds } from '../utils/storage';
+import { CreateApartmentModal } from './CreateApartmentModal';
 
 interface BuildingLobbyProps {
   apartments: Apartment[];
@@ -29,6 +31,7 @@ interface BuildingLobbyProps {
   onOpenGuide?: () => void;
   onAttemptEnterApartment?: (apt: Apartment) => void;
   onOpenStarosta?: () => void;
+  onCreateApartment?: (newAptData: Partial<Apartment>) => void;
   systemConfig?: SystemConfig;
 }
 
@@ -41,10 +44,12 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
   onOpenGuide,
   onAttemptEnterApartment,
   onOpenStarosta,
+  onCreateApartment,
   systemConfig,
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'mine'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const authorizedIds = getAuthorizedApartmentIds();
 
@@ -247,6 +252,16 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
                 Мои ({authorizedIds.length})
               </button>
             </div>
+
+            {onCreateApartment && (
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs shadow-md shadow-cyan-950/40 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Заселиться / Добавить квартиру</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -492,6 +507,16 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
           </button>
         )}
       </div>
+
+      {/* Move-in / Create apartment modal */}
+      {onCreateApartment && (
+        <CreateApartmentModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          existingApartments={apartments}
+          onCreateApartment={onCreateApartment}
+        />
+      )}
     </div>
   );
 };

@@ -80,6 +80,7 @@ export interface Apartment {
   members: HouseholdMember[];
   cycleDay: number; // 1 to 28
   cycleStartDate: string;
+  lastActiveCalendarDate?: string; // e.g. "2026-09-29" for auto-advancement across calendar days
   coopTargetPoints: number;
   coopCurrentPoints: number;
   coopRewardTitle: string;
