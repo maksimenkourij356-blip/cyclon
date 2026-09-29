@@ -40,9 +40,19 @@ import { TelegramShareModal } from './components/TelegramShareModal';
 import { ApartmentConfigModal } from './components/ApartmentConfigModal';
 import { TransferTaskModal } from './components/TransferTaskModal';
 import { UserGuide } from './components/UserGuide';
+import { StarostaModal } from './components/StarostaModal';
 import { DEFAULT_KRASIKOVS_CONFIG, generateTasksForConfig, generateBadgesForConfig } from './data/taskGenerator';
 import { evaluateBadgesOnTaskComplete } from './utils/badgeEngine';
-import { ApartmentConfig } from './types';
+import { ApartmentConfig, SystemConfig } from './types';
+import { 
+  subscribeToCloudApartments, 
+  syncApartmentToCloud, 
+  deleteApartmentFromCloud, 
+  seedCloudIfEmpty, 
+  subscribeToSystemConfig, 
+  saveSystemConfig, 
+  DEFAULT_SYSTEM_CONFIG 
+} from './utils/firebase';
 
 export default function App() {
   const [apartments, setApartments] = useState<Apartment[]>(() => loadApartments());
@@ -50,12 +60,14 @@ export default function App() {
   const [activeMemberId, setActiveMemberIdState] = useState<string>(() =>
     getActiveMemberId(getActiveApartmentId())
   );
+  const [systemConfig, setSystemConfig] = useState<SystemConfig>(DEFAULT_SYSTEM_CONFIG);
 
   const [currentView, setCurrentView] = useState<'lobby' | 'apartment' | 'guide'>('apartment');
   const [activeTab, setActiveTab] = useState<'today' | 'calendar' | 'balance' | 'badges' | 'debts'>('today');
 
   // Modals state
   const [isIntercomOpen, setIsIntercomOpen] = useState(false);
+  const [isStarostaOpen, setIsStarostaOpen] = useState(false);
   const [targetApartmentForIntercom, setTargetApartmentForIntercom] = useState<Apartment | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -92,6 +104,30 @@ export default function App() {
   useEffect(() => {
     saveApartments(apartments);
   }, [apartments]);
+
+  // Real-time synchronization with Firebase Cloud Firestore
+  useEffect(() => {
+    // Seed initial apartments if cloud is newly provisioned
+    seedCloudIfEmpty().catch(console.warn);
+
+    // Subscribe to cloud apartments in real-time
+    const unsubscribeApts = subscribeToCloudApartments((cloudApts) => {
+      if (cloudApts && cloudApts.length > 0) {
+        setApartments(cloudApts);
+        saveApartments(cloudApts);
+      }
+    });
+
+    // Subscribe to Starosta / system config
+    const unsubscribeConfig = subscribeToSystemConfig((cfg) => {
+      setSystemConfig(cfg);
+    });
+
+    return () => {
+      unsubscribeApts();
+      unsubscribeConfig();
+    };
+  }, []);
 
   // Ensure active apartment ID is valid
   useEffect(() => {
@@ -178,11 +214,13 @@ export default function App() {
     };
 
     setApartments((prev) => [newApt, ...prev]);
+    syncApartmentToCloud(newApt);
     handleSelectApartment(newApt);
   };
 
   const handleSaveApartmentConfig = (newConfig: ApartmentConfig, regenerateTasks: boolean) => {
     soundEffects.playDoorOpen();
+    let updatedTargetApt: Apartment | null = null;
     setApartments((prev) =>
       prev.map((apt) => {
         if (apt.id !== activeApartment.id) return apt;
@@ -208,14 +246,19 @@ export default function App() {
           updatedBadges = generateBadgesForConfig(newConfig);
         }
 
-        return {
+        const updated = {
           ...apt,
           config: newConfig,
           tasks: updatedTasks,
           badges: updatedBadges,
         };
+        updatedTargetApt = updated;
+        return updated;
       })
     );
+    if (updatedTargetApt) {
+      syncApartmentToCloud(updatedTargetApt);
+    }
   };
 
   const handleImportApartmentData = (importedApt: Apartment) => {
@@ -227,6 +270,7 @@ export default function App() {
       }
       return [importedApt, ...prev];
     });
+    syncApartmentToCloud(importedApt);
     handleSelectApartment(importedApt);
     setRitualPraiseToast({
       memberName: importedApt.familyTitle,
@@ -236,7 +280,66 @@ export default function App() {
       message: `Квартира № ${importedApt.apartmentNumber} (${importedApt.familyTitle}) успешно импортирована!`,
       subtitle: `Загружено очков: ${importedApt.coopCurrentPoints}, задач: ${importedApt.tasks.length}`,
     });
-    setTimeout(() => setRitualPraiseToast(null), 5000);
+  };
+
+  // Starosta (Admin) Handlers
+  const handleStarostaUpdateApartment = async (updatedApt: Apartment) => {
+    setApartments((prev) => prev.map((a) => (a.id === updatedApt.id ? updatedApt : a)));
+    await syncApartmentToCloud(updatedApt);
+  };
+
+  const handleStarostaDeleteApartment = async (aptId: string) => {
+    setApartments((prev) => {
+      const remaining = prev.filter((a) => a.id !== aptId);
+      if (activeAptId === aptId && remaining.length > 0) {
+        setActiveAptIdState(remaining[0].id);
+        setActiveApartmentId(remaining[0].id);
+      }
+      return remaining;
+    });
+    await deleteApartmentFromCloud(aptId);
+  };
+
+  const handleStarostaCreateApartment = async (newAptData: Partial<Apartment>) => {
+    const config: ApartmentConfig = newAptData.config || DEFAULT_KRASIKOVS_CONFIG;
+    const generatedTasks = generateTasksForConfig(config);
+    const generatedBadges = generateBadgesForConfig(config, true);
+
+    const aptId = newAptData.id || `apt-${newAptData.apartmentNumber || Date.now()}`;
+    const newApt: Apartment = {
+      id: aptId,
+      handle: newAptData.handle || `apt${newAptData.apartmentNumber || Date.now()}`,
+      pinCode: newAptData.pinCode || '1234',
+      apartmentNumber: newAptData.apartmentNumber || 100,
+      floor: newAptData.floor || Math.max(1, Math.ceil((newAptData.apartmentNumber || 100) / 10)),
+      familyTitle: newAptData.familyTitle || 'Новая семья',
+      config,
+      members: newAptData.members || [],
+      cycleDay: 1,
+      cycleStartDate: new Date().toISOString().split('T')[0],
+      coopTargetPoints: 1000,
+      coopCurrentPoints: 0,
+      coopRewardTitle: 'Семейный ужин / Отдых 🎉',
+      tasks: generatedTasks,
+      debts: [],
+      badges: generatedBadges,
+      history: [],
+      settings: { allowPwaPush: true, vacationMode: false },
+    };
+
+    setApartments((prev) => [newApt, ...prev]);
+    await syncApartmentToCloud(newApt);
+  };
+
+  const handleUpdateSystemConfig = async (newConfig: Partial<SystemConfig>) => {
+    setSystemConfig((prev) => ({ ...prev, ...newConfig }));
+    await saveSystemConfig(newConfig);
+  };
+
+  const handleStarostaSyncAll = async () => {
+    for (const apt of apartments) {
+      await syncApartmentToCloud(apt);
+    }
   };
 
   // Task Actions
@@ -437,7 +540,7 @@ export default function App() {
           }
         }
 
-        return {
+        const updated = {
           ...apt,
           members: updatedMembers,
           coopCurrentPoints: apt.coopCurrentPoints + pointsAwarded,
@@ -446,6 +549,8 @@ export default function App() {
           badges: updatedBadges,
           history: [newHistoryRecord, ...apt.history],
         };
+        syncApartmentToCloud(updated);
+        return updated;
       })
     );
   };
@@ -515,7 +620,7 @@ export default function App() {
           });
         }
 
-        return {
+        const updated = {
           ...apt,
           members: updatedMembers,
           coopCurrentPoints: apt.coopCurrentPoints + pointsAwarded,
@@ -534,6 +639,8 @@ export default function App() {
             ...apt.history,
           ],
         };
+        syncApartmentToCloud(updated);
+        return updated;
       })
     );
   };
@@ -543,10 +650,12 @@ export default function App() {
     setApartments((prev) =>
       prev.map((apt) => {
         if (apt.id !== activeApartment.id) return apt;
-        return {
+        const updated = {
           ...apt,
           debts: apt.debts.filter((d) => d.id !== debt.id),
         };
+        syncApartmentToCloud(updated);
+        return updated;
       })
     );
 
@@ -889,6 +998,8 @@ export default function App() {
                 onGoToActiveApartment={() => setCurrentView('apartment')}
                 onOpenGuide={() => setCurrentView('guide')}
                 onAttemptEnterApartment={handleAttemptEnterApartment}
+                onOpenStarosta={() => setIsStarostaOpen(true)}
+                systemConfig={systemConfig}
               />
             </motion.div>
           ) : currentView === 'guide' ? (
@@ -927,6 +1038,7 @@ export default function App() {
                 onOpenShare={() => setIsShareOpen(true)}
                 onOpenConfig={() => setIsConfigOpen(true)}
                 onOpenGuide={() => setCurrentView('guide')}
+                onOpenStarosta={() => setIsStarostaOpen(true)}
               />
 
               {/* Sub-view by Tab */}
@@ -1002,6 +1114,8 @@ export default function App() {
         onCreateApartment={handleCreateApartment}
         targetApartment={targetApartmentForIntercom}
         onClearTargetApartment={() => setTargetApartmentForIntercom(null)}
+        onOpenStarosta={() => setIsStarostaOpen(true)}
+        systemConfig={systemConfig}
       />
 
       {/* Cleaning Sprint Timer Modal */}
@@ -1037,6 +1151,19 @@ export default function App() {
         fromMember={activeMember}
         partnerMember={otherMember}
         onConfirmTransfer={handleConfirmTransferTask}
+      />
+
+      {/* Starosta Admin & PIN Reset Modal */}
+      <StarostaModal
+        isOpen={isStarostaOpen}
+        onClose={() => setIsStarostaOpen(false)}
+        apartments={apartments}
+        systemConfig={systemConfig}
+        onUpdateApartment={handleStarostaUpdateApartment}
+        onDeleteApartment={handleStarostaDeleteApartment}
+        onCreateApartment={handleStarostaCreateApartment}
+        onUpdateSystemConfig={handleUpdateSystemConfig}
+        onSyncAll={handleStarostaSyncAll}
       />
     </div>
   );

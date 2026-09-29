@@ -14,7 +14,8 @@ import {
   Settings2,
   BookOpen,
   Eye,
-  EyeOff
+  EyeOff,
+  Crown
 } from 'lucide-react';
 import { Apartment, HouseholdMember } from '../types';
 
@@ -29,6 +30,7 @@ interface ApartmentHeaderProps {
   onOpenShare: () => void;
   onOpenConfig?: () => void;
   onOpenGuide?: () => void;
+  onOpenStarosta?: () => void;
 }
 
 export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
@@ -42,6 +44,7 @@ export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
   onOpenShare,
   onOpenConfig,
   onOpenGuide,
+  onOpenStarosta,
 }) => {
   const currentStreak = Math.max(...apartment.members.map((m) => m.streakDays));
   const debtsCount = apartment.debts.length;
@@ -142,6 +145,17 @@ export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
               );
             })}
           </div>
+
+          {onOpenStarosta && (
+            <button
+              onClick={onOpenStarosta}
+              className="p-2.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+              title="Кабинет Старосты (Максим): сброс PIN-кодов, управление базой"
+            >
+              <Crown className="w-4 h-4 text-amber-400" />
+              <span className="hidden xl:inline">Староста</span>
+            </button>
+          )}
 
           {onOpenConfig && (
             <button

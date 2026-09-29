@@ -108,3 +108,11 @@ export interface BuildingStats {
   totalPointsEarned: number;
   topStreakApartment: string;
 }
+
+export interface SystemConfig {
+  starostaPin: string; // Master pin to access Starosta panel, default "7777"
+  starostaName: string; // Default: "Максим (Староста)"
+  houseName: string; // Default: "ЖК ЦИКЛON"
+  announcement?: string;
+  lastUpdated?: string;
+}

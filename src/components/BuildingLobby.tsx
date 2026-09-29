@@ -13,9 +13,10 @@ import {
   Users, 
   BookOpen,
   Lock,
-  Search
+  Search,
+  Crown
 } from 'lucide-react';
-import { Apartment } from '../types';
+import { Apartment, SystemConfig } from '../types';
 import { getAuthorizedApartmentIds } from '../utils/storage';
 
 interface BuildingLobbyProps {
@@ -26,6 +27,8 @@ interface BuildingLobbyProps {
   onGoToActiveApartment: () => void;
   onOpenGuide?: () => void;
   onAttemptEnterApartment?: (apt: Apartment) => void;
+  onOpenStarosta?: () => void;
+  systemConfig?: SystemConfig;
 }
 
 export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
@@ -36,6 +39,8 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
   onGoToActiveApartment,
   onOpenGuide,
   onAttemptEnterApartment,
+  onOpenStarosta,
+  systemConfig,
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'mine'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -135,8 +140,29 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
                 <span>Как это работает? Гид и правила 📖</span>
               </button>
             )}
+
+            {onOpenStarosta && (
+              <button
+                onClick={onOpenStarosta}
+                className="px-6 py-3 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 hover:text-amber-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Crown className="w-4 h-4 text-amber-400" />
+                <span>Кабинет Старосты (Максим) 👑</span>
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Announcement from Starosta */}
+        {systemConfig?.announcement && (
+          <div className="mt-4 p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-start gap-3">
+            <Crown className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <span className="font-bold text-amber-300 mr-2">{systemConfig.starostaName || 'Староста дома'}:</span>
+              <span className="text-amber-100">{systemConfig.announcement}</span>
+            </div>
+          </div>
+        )}
 
         {/* Building Stats Ticker */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6 mt-6 border-t border-slate-800/80">

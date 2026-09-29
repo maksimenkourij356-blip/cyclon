@@ -18,10 +18,11 @@ import {
   LogOut,
   Hash,
   AtSign,
-  History
+  History,
+  Crown
 } from 'lucide-react';
 import { soundEffects } from '../utils/audio';
-import { Apartment, ApartmentConfig } from '../types';
+import { Apartment, ApartmentConfig, SystemConfig } from '../types';
 import { 
   authorizeApartment, 
   getPreviousSessionApartmentId, 
@@ -38,6 +39,8 @@ interface IntercomModalProps {
   onCreateApartment: (newApt: Partial<Apartment>) => void;
   targetApartment?: Apartment | null;
   onClearTargetApartment?: () => void;
+  onOpenStarosta?: () => void;
+  systemConfig?: SystemConfig;
 }
 
 export const IntercomModal: React.FC<IntercomModalProps> = ({
@@ -48,6 +51,8 @@ export const IntercomModal: React.FC<IntercomModalProps> = ({
   onCreateApartment,
   targetApartment = null,
   onClearTargetApartment,
+  onOpenStarosta,
+  systemConfig,
 }) => {
   const [activeTab, setActiveTab] = useState<'dial' | 'create'>('dial');
   const [code, setCode] = useState('');
@@ -209,6 +214,17 @@ export const IntercomModal: React.FC<IntercomModalProps> = ({
     }
 
     soundEffects.playKeypadTone('call');
+
+    // Case 0: Master PIN for Starosta cabinet
+    const starostaMasterPin = systemConfig?.starostaPin || '7777';
+    if (code === starostaMasterPin) {
+      soundEffects.playVictory();
+      setCode('');
+      setErrorMsg('');
+      onClose();
+      if (onOpenStarosta) onOpenStarosta();
+      return;
+    }
 
     // Case 1: Specific apartment targeted
     if (selectedTarget) {
@@ -690,6 +706,21 @@ export const IntercomModal: React.FC<IntercomModalProps> = ({
                       <span>Нет сохранённой сессии. Наберите логин или номер выше и введите 4-значный PIN.</span>
                     </div>
                   </div>
+                )}
+
+                {/* Starosta & Forgotten PIN helper */}
+                {onOpenStarosta && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenStarosta();
+                    }}
+                    className="w-full py-2.5 px-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <Crown className="w-4 h-4 text-amber-400" />
+                    <span>Забыли PIN? / Кабинет Старосты Дома (Максим) 🔑</span>
+                  </button>
                 )}
               </div>
             </div>
