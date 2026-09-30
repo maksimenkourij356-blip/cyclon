@@ -45,7 +45,7 @@ export const CreateApartmentModal: React.FC<CreateApartmentModalProps> = ({
   const [apartmentNumber, setApartmentNumber] = useState<number>(suggestedNum);
   const [familyTitle, setFamilyTitle] = useState('');
   const [pinCode, setPinCode] = useState('');
-  const [includeMissedDaysInDebts, setIncludeMissedDaysInDebts] = useState<boolean>(false);
+  const [midWeekMode, setMidWeekMode] = useState<'debts' | 'today' | 'fresh' | 'day1'>('debts');
   const [partner1Name, setPartner1Name] = useState('');
   const [partner2Name, setPartner2Name] = useState('');
   const [petType, setPetType] = useState<ApartmentConfig['petType']>('cat');
@@ -131,8 +131,9 @@ export const CreateApartmentModal: React.FC<CreateApartmentModalProps> = ({
       pinCode,
       config,
       members,
-      cycleDay: todayIsoWeekday,
-      ...(includeMissedDaysInDebts ? { includeMissedDaysInDebts: true } : {}),
+      cycleDay: midWeekMode === 'day1' ? 1 : todayIsoWeekday,
+      midWeekMode,
+      includeMissedDaysInDebts: midWeekMode === 'debts',
       coopRewardTitle: coopReward.trim() || 'Семейный ужин 🎉',
     } as any);
 
@@ -256,24 +257,134 @@ export const CreateApartmentModal: React.FC<CreateApartmentModalProps> = ({
               </p>
             </div>
 
-            {todayIsoWeekday > 1 && (
-              <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 cursor-pointer transition-all">
-                <input
-                  type="checkbox"
-                  checked={includeMissedDaysInDebts}
-                  onChange={(e) => setIncludeMissedDaysInDebts(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-cyan-400 focus:ring-offset-0 bg-slate-950"
-                />
-                <div className="text-xs">
-                  <span className="text-slate-200 font-medium">
-                    Добавить задачи пропущенного понедельника (День 1) в Долги
-                  </span>
-                  <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">
-                    Задачи понедельника появятся во вкладке «Долги» без штрафа — их можно выполнить в любое удобное время, не сдвигая субботу и воскресенье.
-                  </p>
+            {todayIsoWeekday > 1 && (() => {
+              const missedDaysList = WEEKDAY_NAMES_RU.slice(0, todayIsoWeekday - 1);
+              const missedCount = missedDaysList.length;
+              const missedDaysStr = missedCount === 1 
+                ? 'понедельника (День 1)'
+                : missedCount === 2
+                ? 'понедельника и вторника (Дни 1 и 2)'
+                : `с понедельника по ${missedDaysList[missedCount - 1].toLowerCase()} (Дни 1–${todayIsoWeekday - 1})`;
+
+              return (
+                <div className="space-y-2 pt-1">
+                  <div className="text-[11px] font-semibold text-slate-300 flex items-center justify-between">
+                    <span>Распределение задач недели (до сегодняшнего дня):</span>
+                    <span className="text-[10px] text-amber-400 font-mono">
+                      Пропущено: {missedCount} {missedCount === 1 ? 'день' : missedCount < 5 ? 'дня' : 'дней'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    {/* Option 1: Debts (Recommended) */}
+                    <label
+                      onClick={() => setMidWeekMode('debts')}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        midWeekMode === 'debts'
+                          ? 'bg-cyan-950/40 border-cyan-500/50 text-white shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="midWeekMode"
+                        checked={midWeekMode === 'debts'}
+                        onChange={() => setMidWeekMode('debts')}
+                        className="mt-0.5 text-cyan-500 focus:ring-cyan-400 bg-slate-950"
+                      />
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-white">В Долги (Рекомендуется)</span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                            Без спешки
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-snug">
+                          Задачи {missedDaysStr} отправятся во вкладку «Долги» без штрафов. Сегодня вы делаете только задачи на {todayWeekdayName.toLowerCase()}, а прошлые дни закрываете по желанию.
+                        </p>
+                      </div>
+                    </label>
+
+                    {/* Option 2: Merge to Today */}
+                    <label
+                      onClick={() => setMidWeekMode('today')}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        midWeekMode === 'today'
+                          ? 'bg-cyan-950/40 border-cyan-500/50 text-white shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="midWeekMode"
+                        checked={midWeekMode === 'today'}
+                        onChange={() => setMidWeekMode('today')}
+                        className="mt-0.5 text-cyan-500 focus:ring-cyan-400 bg-slate-950"
+                      />
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-white">Объединить на Сегодня</span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            Все дни недели
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-snug">
+                          Задачи {missedDaysStr} добавятся прямо в список на Сегодня вместе с задачами {todayWeekdayName.toLowerCase()} (всего {missedCount + 1} {missedCount + 1 < 5 ? 'дня' : 'дней'}).
+                        </p>
+                      </div>
+                    </label>
+
+                    {/* Option 3: Clean slate */}
+                    <label
+                      onClick={() => setMidWeekMode('fresh')}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        midWeekMode === 'fresh'
+                          ? 'bg-cyan-950/40 border-cyan-500/50 text-white shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="midWeekMode"
+                        checked={midWeekMode === 'fresh'}
+                        onChange={() => setMidWeekMode('fresh')}
+                        className="mt-0.5 text-cyan-500 focus:ring-cyan-400 bg-slate-950"
+                      />
+                      <div className="space-y-0.5">
+                        <div className="font-semibold text-white">Чистый лист (только {todayWeekdayName})</div>
+                        <p className="text-[11px] text-slate-400 leading-snug">
+                          Пропустить задачи прошлых дней недели и начать сегодня со среды без долгов.
+                        </p>
+                      </div>
+                    </label>
+
+                    {/* Option 4: Start from Day 1 */}
+                    <label
+                      onClick={() => setMidWeekMode('day1')}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        midWeekMode === 'day1'
+                          ? 'bg-cyan-950/40 border-cyan-500/50 text-white shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="midWeekMode"
+                        checked={midWeekMode === 'day1'}
+                        onChange={() => setMidWeekMode('day1')}
+                        className="mt-0.5 text-cyan-500 focus:ring-cyan-400 bg-slate-950"
+                      />
+                      <div className="space-y-0.5">
+                        <div className="font-semibold text-white">Начать цикл с 1-го дня (Понедельник)</div>
+                        <p className="text-[11px] text-slate-400 leading-snug">
+                          Считать сегодняшний день Днём 1 28-дневного цикла, независимо от дня недели.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
                 </div>
-              </label>
-            )}
+              );
+            })()}
           </div>
 
           {/* Household members */}

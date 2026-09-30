@@ -360,7 +360,10 @@ export default function App() {
   };
 
   const handleCreateApartment = (
-    newAptData: Partial<Apartment> & { includeMissedDaysInDebts?: boolean }
+    newAptData: Partial<Apartment> & { 
+      includeMissedDaysInDebts?: boolean;
+      midWeekMode?: 'debts' | 'today' | 'fresh' | 'day1';
+    }
   ) => {
     const config: ApartmentConfig = newAptData.config || DEFAULT_KRASIKOVS_CONFIG;
     const generatedTasks = generateTasksForConfig(config);
@@ -369,12 +372,15 @@ export default function App() {
     const aptId = newAptData.id || `apt-${newAptData.apartmentNumber || Date.now()}-${Date.now()}`;
     const todayStr = getLocalTodayDateString();
     const realDay = getCurrentRealDayOfWeek();
+    const midWeekMode = newAptData.midWeekMode || (newAptData.includeMissedDaysInDebts ? 'debts' : 'debts');
+    const targetCycleDay = midWeekMode === 'day1' ? 1 : (newAptData.cycleDay || realDay);
 
-    // If user requested to include missed previous days of week into debts:
     const initialDebts: CleaningTask[] = [];
-    if (newAptData.includeMissedDaysInDebts && realDay > 1) {
+    let initialTasks = [...generatedTasks];
+
+    if (midWeekMode === 'debts' && targetCycleDay > 1) {
       const missedTasks = generatedTasks.filter(
-        (t) => t.category !== 'ritual' && t.dayOfCycle && t.dayOfCycle < realDay
+        (t) => t.category !== 'ritual' && t.dayOfCycle && t.dayOfCycle < targetCycleDay
       );
       missedTasks.forEach((t) => {
         initialDebts.push({
@@ -383,6 +389,17 @@ export default function App() {
           description: `${t.description} (с Дня ${t.dayOfCycle})`,
           status: 'available',
         });
+      });
+    } else if (midWeekMode === 'today' && targetCycleDay > 1) {
+      initialTasks = initialTasks.map((t) => {
+        if (t.category !== 'ritual' && t.dayOfCycle && t.dayOfCycle < targetCycleDay) {
+          return {
+            ...t,
+            dayOfCycle: targetCycleDay,
+            description: `${t.description} (с Дня ${t.dayOfCycle})`,
+          };
+        }
+        return t;
       });
     }
 
@@ -395,13 +412,13 @@ export default function App() {
       familyTitle: newAptData.familyTitle || 'Новая семья',
       config,
       members: newAptData.members || [],
-      cycleDay: realDay,
+      cycleDay: targetCycleDay,
       cycleStartDate: todayStr,
       lastActiveCalendarDate: todayStr,
       coopTargetPoints: 1000,
       coopCurrentPoints: 0,
       coopRewardTitle: newAptData.coopRewardTitle || 'Семейный ужин / Отдых 🎉',
-      tasks: generatedTasks,
+      tasks: initialTasks,
       debts: initialDebts,
       badges: generatedBadges,
       history: [],
@@ -413,6 +430,100 @@ export default function App() {
     syncApartmentToCloud(newApt);
     handleSelectApartment(newApt);
     setCurrentView('apartment');
+  };
+
+  const handlePullMissedTasksToToday = () => {
+    if (!activeApartment) return;
+    soundEffects.playTaskSuccess();
+    const cycleDay = activeApartment.cycleDay;
+    
+    // Check if there are debts from earlier days of this cycle
+    const earlierDebts = (activeApartment.debts || []).filter((d) => d.dayOfCycle && d.dayOfCycle < cycleDay);
+    const remainingDebts = (activeApartment.debts || []).filter((d) => !d.dayOfCycle || d.dayOfCycle >= cycleDay);
+
+    // Also check tasks from earlier days in tasks array
+    let updatedTasks = activeApartment.tasks.map((t) => {
+      if (t.category !== 'ritual' && t.dayOfCycle && t.dayOfCycle < cycleDay && t.status !== 'completed') {
+        return {
+          ...t,
+          dayOfCycle: cycleDay,
+          description: t.description.includes('(с Дня') ? t.description : `${t.description} (с Дня ${t.dayOfCycle})`,
+        };
+      }
+      return t;
+    });
+
+    // Convert earlier debts into active tasks for today
+    if (earlierDebts.length > 0) {
+      earlierDebts.forEach((d) => {
+        const originalId = d.id.replace('debt-', '');
+        const existing = updatedTasks.find((t) => t.id === originalId);
+        if (existing) {
+          existing.dayOfCycle = cycleDay;
+          existing.status = 'available';
+        } else {
+          updatedTasks.push({
+            ...d,
+            id: originalId,
+            dayOfCycle: cycleDay,
+            status: 'available',
+          });
+        }
+      });
+    }
+
+    const updatedApt = {
+      ...activeApartment,
+      tasks: updatedTasks,
+      debts: remainingDebts,
+    };
+
+    setApartments((prev) => prev.map((a) => (a.id === updatedApt.id ? updatedApt : a)));
+    syncApartmentToCloud(updatedApt);
+    setRitualPraiseToast({
+      memberName: activeMember?.name || 'Жильцы',
+      taskTitle: 'Задачи добавлены в Сегодня',
+      points: 0,
+      icon: '📥',
+      message: `Задачи с начала недели успешно перенесены в сегодняшний список дел!`,
+    });
+  };
+
+  const handleMoveMissedTasksToDebts = () => {
+    if (!activeApartment) return;
+    soundEffects.playTaskSuccess();
+    const cycleDay = activeApartment.cycleDay;
+
+    const missedTasks = activeApartment.tasks.filter(
+      (t) => t.category !== 'ritual' && t.dayOfCycle && t.dayOfCycle < cycleDay && t.status !== 'completed'
+    );
+    const newDebts = [...(activeApartment.debts || [])];
+    missedTasks.forEach((t) => {
+      const debtId = `debt-${t.id}`;
+      if (!newDebts.some((d) => d.id === debtId)) {
+        newDebts.push({
+          ...t,
+          id: debtId,
+          description: t.description.includes('(с Дня') ? t.description : `${t.description} (с Дня ${t.dayOfCycle})`,
+          status: 'available',
+        });
+      }
+    });
+
+    const updatedApt = {
+      ...activeApartment,
+      debts: newDebts,
+    };
+
+    setApartments((prev) => prev.map((a) => (a.id === updatedApt.id ? updatedApt : a)));
+    syncApartmentToCloud(updatedApt);
+    setRitualPraiseToast({
+      memberName: activeMember?.name || 'Жильцы',
+      taskTitle: 'Задачи перенесены в Долги',
+      points: 0,
+      icon: '📦',
+      message: `Задачи прошлых дней перенесены во вкладку «Долги» без штрафов.`,
+    });
   };
 
   const handleSaveApartmentConfig = (newConfig: ApartmentConfig, regenerateTasks: boolean) => {
@@ -532,13 +643,25 @@ export default function App() {
       familyTitle: newAptData.familyTitle || 'Новая семья',
       config,
       members: newAptData.members || [],
-      cycleDay: 1,
-      cycleStartDate: new Date().toISOString().split('T')[0],
+      cycleDay: newAptData.cycleDay || getCurrentRealDayOfWeek(),
+      cycleStartDate: getLocalTodayDateString(),
+      lastActiveCalendarDate: getLocalTodayDateString(),
       coopTargetPoints: 1000,
       coopCurrentPoints: 0,
-      coopRewardTitle: 'Семейный ужин / Отдых 🎉',
+      coopRewardTitle: newAptData.coopRewardTitle || 'Семейный ужин / Отдых 🎉',
       tasks: generatedTasks,
-      debts: [],
+      debts: (() => {
+        const cDay = newAptData.cycleDay || getCurrentRealDayOfWeek();
+        if (cDay <= 1) return [];
+        return generatedTasks
+          .filter((t) => t.category !== 'ritual' && t.dayOfCycle && t.dayOfCycle < cDay)
+          .map((t) => ({
+            ...t,
+            id: `debt-${t.id}`,
+            description: `${t.description} (с Дня ${t.dayOfCycle})`,
+            status: 'available' as const,
+          }));
+      })(),
       badges: generatedBadges,
       history: [],
       settings: { allowPwaPush: true, vacationMode: false },
@@ -1259,6 +1382,7 @@ export default function App() {
               {activeTab === 'today' && (
                 <TodayTasks
                   tasks={activeApartment.tasks}
+                  debts={activeApartment.debts || []}
                   activeMember={activeMember}
                   otherMember={otherMember}
                   cycleDay={activeApartment.cycleDay}
@@ -1266,6 +1390,9 @@ export default function App() {
                   onPassTask={handlePassTask}
                   onStartTimer={(task) => setTimerTask(task)}
                   onCompleteDirectly={handleCompleteTask}
+                  onGoToDebts={() => setActiveTab('debts')}
+                  onPullEarlierDaysToToday={handlePullMissedTasksToToday}
+                  onMoveEarlierDaysToDebts={handleMoveMissedTasksToDebts}
                 />
               )}
 

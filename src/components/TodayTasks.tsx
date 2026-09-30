@@ -23,6 +23,7 @@ import { getWeekdayNameForCycleDay } from '../utils/dayCycle';
 
 interface TodayTasksProps {
   tasks: CleaningTask[];
+  debts?: CleaningTask[];
   activeMember: HouseholdMember;
   otherMember: HouseholdMember;
   cycleDay: number;
@@ -30,10 +31,14 @@ interface TodayTasksProps {
   onPassTask: (task: CleaningTask) => void;
   onStartTimer: (task: CleaningTask) => void;
   onCompleteDirectly: (task: CleaningTask) => void;
+  onGoToDebts?: () => void;
+  onPullEarlierDaysToToday?: () => void;
+  onMoveEarlierDaysToDebts?: () => void;
 }
 
 export const TodayTasks: React.FC<TodayTasksProps> = ({
   tasks,
+  debts = [],
   activeMember,
   otherMember,
   cycleDay,
@@ -41,6 +46,9 @@ export const TodayTasks: React.FC<TodayTasksProps> = ({
   onPassTask,
   onStartTimer,
   onCompleteDirectly,
+  onGoToDebts,
+  onPullEarlierDaysToToday,
+  onMoveEarlierDaysToDebts,
 }) => {
   // Disgust Factor badge styling
   const getDisgustBadge = (factor: DisgustFactor) => {
@@ -89,6 +97,15 @@ export const TodayTasks: React.FC<TodayTasksProps> = ({
 
   const isWeekend = cycleDay % 7 === 6 || cycleDay % 7 === 0; // Saturday / Sunday
 
+  // Earlier uncompleted tasks from earlier days of the current week (e.g. Days 1..cycleDay-1)
+  const currentDayOfWeekIdx = (cycleDay - 1) % 7; // 0 for Mon, 1 for Tue, 2 for Wed...
+  const earlierDaysUncompleted = tasks.filter(
+    (t) => t.category !== 'ritual' && t.dayOfCycle && t.dayOfCycle < cycleDay && t.dayOfCycle >= cycleDay - currentDayOfWeekIdx && t.status !== 'completed'
+  );
+  const earlierDaysDebts = debts.filter(
+    (d) => d.dayOfCycle && d.dayOfCycle < cycleDay && d.dayOfCycle >= cycleDay - currentDayOfWeekIdx && d.status !== 'completed'
+  );
+
   return (
     <div className="space-y-6">
       {/* Top Banner: Day context and Time limit */}
@@ -135,6 +152,77 @@ export const TodayTasks: React.FC<TodayTasksProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Mid-week catch-up banners if there are tasks earlier this week */}
+      {earlierDaysUncompleted.length > 0 && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl shrink-0">🗓️</span>
+            <div className="space-y-0.5">
+              <div className="font-bold text-white flex items-center gap-2">
+                <span>Задачи с начала недели ({currentDayOfWeekIdx} {currentDayOfWeekIdx === 1 ? 'день' : 'дня'} до сегодня):</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  {earlierDaysUncompleted.length} {earlierDaysUncompleted.length === 1 ? 'задача' : 'задачи'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Задачи понедельника/вторника не закрыты. Вы можете добавить их к сегодняшнему списку дел или отправить во вкладку «Долги».
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {onPullEarlierDaysToToday && (
+              <button
+                type="button"
+                onClick={onPullEarlierDaysToToday}
+                className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 active:scale-95 text-slate-950 font-bold text-xs cursor-pointer shadow-md shadow-cyan-950/40 transition-all"
+              >
+                Добавить в Сегодня
+              </button>
+            )}
+            {onMoveEarlierDaysToDebts && (
+              <button
+                type="button"
+                onClick={onMoveEarlierDaysToDebts}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 active:scale-95 text-amber-300 font-semibold text-xs border border-amber-500/40 cursor-pointer transition-all"
+              >
+                Отправить в Долги
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {earlierDaysDebts.length > 0 && earlierDaysUncompleted.length === 0 && (
+        <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">📋</span>
+            <span>
+              В долгах ждут задачи с начала недели ({earlierDaysDebts.length} шт). Они зафиксированы без штрафов.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {onPullEarlierDaysToToday && (
+              <button
+                type="button"
+                onClick={onPullEarlierDaysToToday}
+                className="px-2.5 py-1.5 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-500/40 text-[11px] font-semibold hover:bg-cyan-900 cursor-pointer transition-colors"
+              >
+                Перенести в Сегодня
+              </button>
+            )}
+            {onGoToDebts && (
+              <button
+                type="button"
+                onClick={onGoToDebts}
+                className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold border border-amber-500/40 text-xs cursor-pointer transition-colors"
+              >
+                К долгам →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Planned Cycle Tasks */}
       <div className="space-y-3">
