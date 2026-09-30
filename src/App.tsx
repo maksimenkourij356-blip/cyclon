@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   BookOpen,
   ShieldCheck,
+  KeyRound,
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -22,8 +23,12 @@ import {
   setActiveApartmentId, 
   getActiveMemberId, 
   setActiveMemberId,
+  getAuthorizedApartmentIds,
   authorizeApartment,
-  savePreviousSessionApartmentId 
+  deauthorizeApartment,
+  savePreviousSessionApartmentId,
+  clearPreviousSession,
+  getPreviousSessionApartmentId
 } from './utils/storage';
 import { calculateLevel } from './data/initialData';
 import { soundEffects } from './utils/audio';
@@ -71,13 +76,41 @@ import {
 
 export default function App() {
   const [apartments, setApartments] = useState<Apartment[]>(() => loadApartments());
-  const [activeAptId, setActiveAptIdState] = useState<string>(() => getActiveApartmentId());
-  const [activeMemberId, setActiveMemberIdState] = useState<string>(() =>
-    getActiveMemberId(getActiveApartmentId())
-  );
+  const [authorizedAptIds, setAuthorizedAptIds] = useState<string[]>(() => getAuthorizedApartmentIds());
+  const [activeAptId, setActiveAptIdState] = useState<string>(() => {
+    const prev = getPreviousSessionApartmentId();
+    const authorized = getAuthorizedApartmentIds();
+    if (prev && authorized.includes(prev)) {
+      return prev;
+    }
+    const active = getActiveApartmentId();
+    if (active && authorized.includes(active)) {
+      return active;
+    }
+    return '';
+  });
+  const [activeMemberId, setActiveMemberIdState] = useState<string>(() => {
+    const prev = getPreviousSessionApartmentId();
+    const authorized = getAuthorizedApartmentIds();
+    const targetAptId = (prev && authorized.includes(prev)) ? prev : getActiveApartmentId();
+    return targetAptId ? getActiveMemberId(targetAptId) : '';
+  });
   const [systemConfig, setSystemConfig] = useState<SystemConfig>(DEFAULT_SYSTEM_CONFIG);
 
-  const [currentView, setCurrentView] = useState<'lobby' | 'apartment' | 'guide'>('apartment');
+  const [currentView, setCurrentView] = useState<'lobby' | 'apartment' | 'guide'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('apt') || params.get('code')) {
+        return 'apartment';
+      }
+    }
+    const prev = getPreviousSessionApartmentId();
+    const authorized = getAuthorizedApartmentIds();
+    if (prev && authorized.includes(prev)) {
+      return 'apartment';
+    }
+    return 'lobby';
+  });
   const [activeTab, setActiveTab] = useState<'today' | 'calendar' | 'balance' | 'badges' | 'debts'>('today');
 
   // Modals state
@@ -110,7 +143,8 @@ export default function App() {
   } | null>(null);
 
   // Active apartment & active member objects
-  const activeApartment = apartments.find((a) => a.id === activeAptId) || apartments[0] || null;
+  const activeApartment = apartments.find((a) => a.id === activeAptId) || null;
+  const isAuthorizedInActiveApartment = activeApartment ? authorizedAptIds.includes(activeApartment.id) : false;
   const activeMember =
     activeApartment?.members?.find((m) => m.id === activeMemberId) ||
     activeApartment?.members?.[0] ||
@@ -213,16 +247,20 @@ export default function App() {
     };
   }, [activeAptId]);
 
-  // Ensure active apartment ID is valid
+  // If active apartment ID is set but was deleted or is not authorized, clear it and redirect to lobby
   useEffect(() => {
-    if (apartments.length > 0 && !apartments.find((a) => a.id === activeAptId)) {
-      setActiveAptIdState(apartments[0].id);
-      setActiveApartmentId(apartments[0].id);
-      if (apartments[0].members?.length > 0) {
-        setActiveMemberIdState(apartments[0].members[0].id);
+    if (activeAptId) {
+      const found = apartments.find((a) => a.id === activeAptId);
+      const isAuth = authorizedAptIds.includes(activeAptId);
+      if (!found || !isAuth) {
+        setActiveAptIdState('');
+        setActiveApartmentId('');
+        if (currentView === 'apartment') {
+          setCurrentView('lobby');
+        }
       }
     }
-  }, [apartments, activeAptId]);
+  }, [apartments, activeAptId, authorizedAptIds, currentView]);
 
   // Handle URL query parameters (?apt=0244)
   useEffect(() => {
@@ -240,8 +278,14 @@ export default function App() {
         );
         if (found) {
           authorizeApartment(found.id);
+          setAuthorizedAptIds(getAuthorizedApartmentIds());
+          savePreviousSessionApartmentId(found.id);
           setActiveAptIdState(found.id);
           setActiveApartmentId(found.id);
+          if (found.members?.length > 0) {
+            setActiveMemberIdState(found.members[0].id);
+            setActiveMemberId(found.id, found.members[0].id);
+          }
           setCurrentView('apartment');
         }
       }
@@ -255,6 +299,7 @@ export default function App() {
 
   const handleSelectApartment = (apt: Apartment) => {
     authorizeApartment(apt.id);
+    setAuthorizedAptIds(getAuthorizedApartmentIds());
     savePreviousSessionApartmentId(apt.id);
     setActiveAptIdState(apt.id);
     setActiveApartmentId(apt.id);
@@ -263,6 +308,16 @@ export default function App() {
       setActiveMemberId(apt.id, apt.members[0].id);
     }
     setCurrentView('apartment');
+  };
+
+  const handleLogoutApartment = (aptId: string) => {
+    deauthorizeApartment(aptId);
+    clearPreviousSession();
+    setAuthorizedAptIds(getAuthorizedApartmentIds());
+    setActiveAptIdState('');
+    setActiveApartmentId('');
+    setCurrentView('lobby');
+    soundEffects.playDoorClose();
   };
 
   const handleSwitchMember = (memberId: string) => {
@@ -435,16 +490,14 @@ export default function App() {
       const remaining = prev.filter((a) => a.id !== aptId);
       saveApartments(remaining);
       if (activeAptId === aptId) {
-        if (remaining.length > 0) {
-          setActiveAptIdState(remaining[0].id);
-          setActiveApartmentId(remaining[0].id);
-        } else {
-          setActiveAptIdState('');
-          setCurrentView('lobby');
-        }
+        setActiveAptIdState('');
+        setActiveApartmentId('');
+        setCurrentView('lobby');
       }
       return remaining;
     });
+    deauthorizeApartment(aptId);
+    setAuthorizedAptIds(getAuthorizedApartmentIds());
     await deleteApartmentFromCloud(aptId);
   };
 
@@ -452,17 +505,15 @@ export default function App() {
     setApartments([]);
     saveApartments([]);
     setActiveAptIdState('');
+    setActiveApartmentId('');
     setCurrentView('lobby');
+    setAuthorizedAptIds([]);
     await deleteAllApartmentsFromCloud();
   };
 
   const handleStarostaRestoreDemoApartments = async () => {
     setApartments(INITIAL_APARTMENTS);
     saveApartments(INITIAL_APARTMENTS);
-    if (INITIAL_APARTMENTS.length > 0) {
-      setActiveAptIdState(INITIAL_APARTMENTS[0].id);
-      setActiveApartmentId(INITIAL_APARTMENTS[0].id);
-    }
     await restoreDemoApartmentsToCloud();
   };
 
@@ -931,13 +982,24 @@ export default function App() {
                 <Building2 className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Холл дома</span>
               </button>
-            ) : (
+            ) : activeApartment && isAuthorizedInActiveApartment ? (
               <button
                 onClick={() => setCurrentView('apartment')}
                 className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-cyan-950/40 cursor-pointer"
               >
                 <DoorOpen className="w-3.5 h-3.5" />
                 <span>Кв. {activeApartment.apartmentNumber}</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setTargetApartmentForIntercom(null);
+                  setIsIntercomOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-cyan-950/40 cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Войти по PIN</span>
               </button>
             )}
 
@@ -1081,13 +1143,19 @@ export default function App() {
             >
               <BuildingLobby
                 apartments={apartments}
-                activeApartment={activeApartment}
+                activeApartment={isAuthorizedInActiveApartment ? activeApartment : null}
                 onOpenIntercom={() => {
                   setTargetApartmentForIntercom(null);
                   setIsIntercomOpen(true);
                 }}
                 onSelectApartment={handleSelectApartment}
-                onGoToActiveApartment={() => setCurrentView('apartment')}
+                onGoToActiveApartment={() => {
+                  if (activeApartment && isAuthorizedInActiveApartment) {
+                    setCurrentView('apartment');
+                  } else {
+                    setIsIntercomOpen(true);
+                  }
+                }}
                 onOpenGuide={() => setCurrentView('guide')}
                 onAttemptEnterApartment={handleAttemptEnterApartment}
                 onOpenStarosta={() => setIsStarostaOpen(true)}
@@ -1129,33 +1197,36 @@ export default function App() {
                 </div>
               )}
             </motion.div>
-          ) : !activeApartment ? (
+          ) : !activeApartment || !isAuthorizedInActiveApartment ? (
             <motion.div
               key="no-apartment"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="text-center py-16 px-6 bg-slate-900/60 rounded-3xl border border-slate-800 space-y-4"
+              className="text-center py-16 px-6 bg-slate-900/60 rounded-3xl border border-slate-800 space-y-4 max-w-lg mx-auto my-8"
             >
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-3xl">
-                🏢
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-3xl">
+                🔒
               </div>
-              <h3 className="text-xl font-bold text-white">В доме нет активных квартир</h3>
+              <h3 className="text-xl font-bold text-white">Требуется авторизация</h3>
               <p className="text-slate-400 text-sm max-w-md mx-auto">
-                Все квартиры были удалены или база пуста. Перейдите в лобби, чтобы заселить новую семью или открыть панель дежурного.
+                Для доступа к пульту квартиры выберите свою квартиру и введите персональный 4-значный PIN-код домофона.
               </p>
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center justify-center gap-3 pt-2">
                 <button
-                  onClick={() => setCurrentView('lobby')}
-                  className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm"
+                  onClick={() => {
+                    setTargetApartmentForIntercom(activeApartment || null);
+                    setIsIntercomOpen(true);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm cursor-pointer"
                 >
-                  Перейти в лобби дома
+                  Ввести PIN домофона 📟
                 </button>
                 <button
-                  onClick={() => setIsStarostaOpen(true)}
-                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm"
+                  onClick={() => setCurrentView('lobby')}
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm cursor-pointer"
                 >
-                  Панель дежурного
+                  Вернуться в холл дома
                 </button>
               </div>
             </motion.div>
@@ -1171,7 +1242,7 @@ export default function App() {
               {/* Apartment Header & Tab bar */}
               <ApartmentHeader
                 apartment={activeApartment}
-                activeMember={activeMember}
+                activeMember={activeMember!}
                 activeTab={activeTab}
                 onSelectTab={setActiveTab}
                 onSwitchMember={handleSwitchMember}
@@ -1181,6 +1252,7 @@ export default function App() {
                 onOpenConfig={() => setIsConfigOpen(true)}
                 onOpenGuide={() => setCurrentView('guide')}
                 onOpenStarosta={() => setIsStarostaOpen(true)}
+                onLogout={() => handleLogoutApartment(activeApartment.id)}
               />
 
               {/* Sub-view by Tab */}

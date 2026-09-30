@@ -138,7 +138,7 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row md:flex-col gap-3 shrink-0">
-            {activeApartment && (
+            {activeApartment && authorizedIds.includes(activeApartment.id) && (
               <button
                 onClick={onGoToActiveApartment}
                 className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm shadow-xl shadow-cyan-950/50 flex items-center justify-center gap-2.5 transition-all cursor-pointer group"
@@ -351,8 +351,8 @@ export const BuildingLobby: React.FC<BuildingLobbyProps> = ({
             {filteredApartments.map((apt, index) => {
               const totalPoints = apt.members.reduce((s, m) => s + m.totalPoints, 0);
               const streak = Math.max(...apt.members.map((m) => m.streakDays));
-              const isCurrentApt = activeApartment ? apt.id === activeApartment.id : false;
               const isAuthorized = authorizedIds.includes(apt.id);
+              const isCurrentApt = activeApartment && isAuthorized ? apt.id === activeApartment.id : false;
 
             return (
               <motion.div

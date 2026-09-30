@@ -14,7 +14,8 @@ import {
   Settings2,
   BookOpen,
   Eye,
-  EyeOff
+  EyeOff,
+  LogOut
 } from 'lucide-react';
 import { Apartment, HouseholdMember } from '../types';
 import { getWeekdayNameForCycleDay } from '../utils/dayCycle';
@@ -31,6 +32,7 @@ interface ApartmentHeaderProps {
   onOpenConfig?: () => void;
   onOpenGuide?: () => void;
   onOpenStarosta?: () => void;
+  onLogout?: () => void;
 }
 
 export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
@@ -45,6 +47,7 @@ export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
   onOpenConfig,
   onOpenGuide,
   onOpenStarosta,
+  onLogout,
 }) => {
   const currentStreak = Math.max(...apartment.members.map((m) => m.streakDays));
   const debtsCount = apartment.debts.length;
@@ -195,6 +198,17 @@ export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
             <Send className="w-4 h-4 text-sky-400" />
             <span className="hidden md:inline">Партнёру</span>
           </button>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="p-2.5 rounded-2xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-500/40 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+              title="Выйти из квартиры (заблокировать доступ PIN-кодом)"
+            >
+              <LogOut className="w-4 h-4 text-rose-400" />
+              <span className="hidden xl:inline">Выйти</span>
+            </button>
+          )}
         </div>
       </div>
 

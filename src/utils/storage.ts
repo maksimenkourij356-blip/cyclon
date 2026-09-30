@@ -9,11 +9,13 @@ const PREVIOUS_SESSION_KEY = 'cyclon_previous_session_apt_id_v6';
 
 export function getPreviousSessionApartmentId(): string | null {
   try {
+    const authorized = getAuthorizedApartmentIds();
     const saved = localStorage.getItem(PREVIOUS_SESSION_KEY);
-    if (saved) return saved;
-    // Fallback to active apartment only if explicitly set in localStorage
+    if (saved && authorized.includes(saved)) return saved;
+    // Fallback to active apartment only if explicitly set and authorized
     const active = localStorage.getItem(ACTIVE_APT_KEY);
-    return active || null;
+    if (active && authorized.includes(active)) return active;
+    return null;
   } catch (e) {
     return null;
   }
@@ -52,15 +54,14 @@ export function getAuthorizedApartmentIds(): string[] {
     const data = localStorage.getItem(AUTHORIZED_APTS_KEY);
     if (data) {
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
   } catch (e) {
     console.error('Failed to load authorized apartments:', e);
   }
-  // Default to apt-101 for demo convenience
-  return ['apt-101'];
+  return [];
 }
 
 export function saveAuthorizedApartmentIds(ids: string[]): void {
@@ -134,17 +135,34 @@ export function clearAllApartments(): void {
 }
 
 export function getActiveApartmentId(): string {
-  return localStorage.getItem(ACTIVE_APT_KEY) || 'apt-101';
+  try {
+    return localStorage.getItem(ACTIVE_APT_KEY) || '';
+  } catch (e) {
+    return '';
+  }
 }
 
 export function setActiveApartmentId(id: string): void {
-  localStorage.setItem(ACTIVE_APT_KEY, id);
+  try {
+    if (id) {
+      localStorage.setItem(ACTIVE_APT_KEY, id);
+    } else {
+      localStorage.removeItem(ACTIVE_APT_KEY);
+    }
+  } catch (e) {
+    console.error('Failed to set active apartment id:', e);
+  }
 }
 
 export function getActiveMemberId(aptId: string): string {
-  const stored = localStorage.getItem(`${ACTIVE_MEMBER_KEY}_${aptId}`);
-  if (stored) return stored;
-  return 'member-max'; // default for apartment 101
+  if (!aptId) return '';
+  try {
+    const stored = localStorage.getItem(`${ACTIVE_MEMBER_KEY}_${aptId}`);
+    if (stored) return stored;
+  } catch (e) {
+    // ignore
+  }
+  return '';
 }
 
 export function setActiveMemberId(aptId: string, memberId: string): void {
