@@ -96,6 +96,7 @@ export default function App() {
     return targetAptId ? getActiveMemberId(targetAptId) : '';
   });
   const [systemConfig, setSystemConfig] = useState<SystemConfig>(DEFAULT_SYSTEM_CONFIG);
+  const [isCloudLoaded, setIsCloudLoaded] = useState(false);
 
   const [currentView, setCurrentView] = useState<'lobby' | 'apartment' | 'guide'>(() => {
     if (typeof window !== 'undefined') {
@@ -166,6 +167,7 @@ export default function App() {
 
     // Subscribe to cloud apartments in real-time
     const unsubscribeApts = subscribeToCloudApartments((cloudApts) => {
+      setIsCloudLoaded(true);
       if (cloudApts !== undefined && cloudApts !== null) {
         setApartments(cloudApts);
         saveApartments(cloudApts);
@@ -195,6 +197,8 @@ export default function App() {
 
   // Automatic day advancement across calendar days (midnight check & periodic poll)
   useEffect(() => {
+    if (!isCloudLoaded) return;
+
     const runAutoAdvanceCheck = () => {
       setApartments((prevApts) => {
         let anyChanged = false;
@@ -688,7 +692,7 @@ export default function App() {
     setApartments((prev) =>
       prev.map((apt) => {
         if (apt.id !== activeApartment.id) return apt;
-        return {
+        const updated = {
           ...apt,
           tasks: apt.tasks.map((t) => {
             if (t.id === task.id) {
@@ -697,6 +701,8 @@ export default function App() {
             return t;
           }),
         };
+        syncApartmentToCloud(updated);
+        return updated;
       })
     );
   };
@@ -711,7 +717,7 @@ export default function App() {
     setApartments((prev) =>
       prev.map((apt) => {
         if (apt.id !== activeApartment.id) return apt;
-        return {
+        const updated = {
           ...apt,
           tasks: apt.tasks.map((t) => {
             if (t.id === taskId) {
@@ -731,6 +737,8 @@ export default function App() {
             return t;
           }),
         };
+        syncApartmentToCloud(updated);
+        return updated;
       })
     );
 

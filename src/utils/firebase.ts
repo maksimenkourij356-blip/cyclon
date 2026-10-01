@@ -53,6 +53,14 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
 };
 
 /**
+ * Strips all undefined fields from an object/array so Firestore setDoc never throws.
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return null as unknown as T;
+  return JSON.parse(JSON.stringify(data));
+}
+
+/**
  * Real-time subscription to all apartments in Firestore.
  * Automatically synchronizes tasks, completed state, points and members across all devices.
  */
@@ -97,7 +105,8 @@ export function subscribeToCloudApartments(
 export async function syncApartmentToCloud(apartment: Apartment): Promise<boolean> {
   try {
     const aptRef = doc(db, APARTMENTS_COLLECTION, apartment.id);
-    await setDoc(aptRef, apartment, { merge: true });
+    const cleanData = sanitizeForFirestore(apartment);
+    await setDoc(aptRef, cleanData, { merge: true });
     return true;
   } catch (err) {
     console.error('[Firebase] Error syncing apartment to cloud:', err);
@@ -149,7 +158,7 @@ export async function restoreDemoApartmentsToCloud(): Promise<boolean> {
   try {
     for (const apt of INITIAL_APARTMENTS) {
       const ref = doc(db, APARTMENTS_COLLECTION, apt.id);
-      await setDoc(ref, apt);
+      await setDoc(ref, sanitizeForFirestore(apt));
     }
     const metaRef = doc(db, SYSTEM_COLLECTION, 'initial_seed');
     await setDoc(metaRef, { seeded: true, restoredAt: new Date().toISOString() }, { merge: true });
@@ -179,7 +188,7 @@ export async function seedCloudIfEmpty(): Promise<boolean> {
       console.log('[Firebase] Cloud database is virgin. Seeding initial demo apartments...');
       for (const apt of INITIAL_APARTMENTS) {
         const ref = doc(db, APARTMENTS_COLLECTION, apt.id);
-        await setDoc(ref, apt);
+        await setDoc(ref, sanitizeForFirestore(apt));
       }
       await setDoc(metaRef, { seeded: true, seededAt: new Date().toISOString() });
       return true;
@@ -231,7 +240,7 @@ export function subscribeToSystemConfig(
 export async function saveSystemConfig(newConfig: Partial<SystemConfig>): Promise<boolean> {
   try {
     const sysRef = doc(db, SYSTEM_COLLECTION, SYSTEM_CONFIG_DOC);
-    await setDoc(sysRef, newConfig, { merge: true });
+    await setDoc(sysRef, sanitizeForFirestore(newConfig), { merge: true });
     return true;
   } catch (err) {
     console.error('[Firebase] Failed to save system config:', err);
@@ -280,7 +289,7 @@ export function subscribeToDutyMessages(
 export async function sendDutyMessageToCloud(msg: DutyMessage): Promise<boolean> {
   try {
     const ref = doc(db, DUTY_MESSAGES_COLLECTION, msg.id);
-    await setDoc(ref, msg);
+    await setDoc(ref, sanitizeForFirestore(msg));
     return true;
   } catch (err) {
     console.error('[Firebase] Failed to send duty message:', err);
@@ -297,7 +306,7 @@ export async function updateDutyMessageInCloud(
 ): Promise<boolean> {
   try {
     const ref = doc(db, DUTY_MESSAGES_COLLECTION, id);
-    await setDoc(ref, updates, { merge: true });
+    await setDoc(ref, sanitizeForFirestore(updates), { merge: true });
     return true;
   } catch (err) {
     console.error('[Firebase] Failed to update duty message:', err);
