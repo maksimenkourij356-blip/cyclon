@@ -35,7 +35,7 @@ import {
 import { Apartment } from '../types';
 
 interface UserGuideProps {
-  apartment: Apartment;
+  apartment?: Apartment | null;
   onGoToApartment: () => void;
   onOpenIntercom: () => void;
   onOpenConfig?: () => void;
@@ -93,7 +93,7 @@ export const UserGuide: React.FC<UserGuideProps> = ({
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/50 flex items-center gap-2 transition-all cursor-pointer"
             >
               <DoorOpen className="w-4 h-4" />
-              <span>Вернуться в квартиру № {apartment.apartmentNumber}</span>
+              <span>{apartment ? `Вернуться в квартиру № ${apartment.apartmentNumber}` : 'В лобби дома / К списку квартир'}</span>
             </button>
 
             <button

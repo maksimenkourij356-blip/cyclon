@@ -124,7 +124,7 @@ export const ApartmentHeader: React.FC<ApartmentHeaderProps> = ({
         </div>
 
         {/* Member Switcher & Share & Config */}
-        <div className="flex items-center gap-2 justify-between sm:justify-end">
+        <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end">
           {/* Switch Active Member */}
           <div className="flex items-center p-1 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
             {apartment.members.map((member) => {

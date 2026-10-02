@@ -18,7 +18,8 @@ interface BalanceAndStatsProps {
 }
 
 export const BalanceAndStats: React.FC<BalanceAndStatsProps> = ({ apartment }) => {
-  const [member1, member2] = apartment.members;
+  const member1 = apartment.members?.[0] || { id: 'm1', name: 'Жилец 1', avatar: '👤', roleTitle: 'Партнёр', totalPoints: 0, completedTasksCount: 0, streakDays: 0, currentLevel: 'Новичок', disgustBreakdown: { norm: 0, moderate: 0, fu: 0, extreme: 0 } };
+  const member2 = apartment.members?.[1] || { id: 'm2', name: 'Партнёр', avatar: '👤', roleTitle: 'Партнёр', totalPoints: 0, completedTasksCount: 0, streakDays: 0, currentLevel: 'Новичок', disgustBreakdown: { norm: 0, moderate: 0, fu: 0, extreme: 0 } };
   const totalPointsPair = (member1?.totalPoints || 0) + (member2?.totalPoints || 0);
 
   const m1Pct = totalPointsPair > 0 ? Math.round((member1.totalPoints / totalPointsPair) * 100) : 50;

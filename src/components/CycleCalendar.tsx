@@ -124,7 +124,7 @@ export const CycleCalendar: React.FC<CycleCalendarProps> = ({
       {/* Grid of 28 Days */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
         {/* Days of week header */}
-        <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-800">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-800">
           {daysOfWeek.map((day, idx) => (
             <div key={day} className={idx >= 5 ? 'text-cyan-400' : ''}>
               {day}
@@ -133,7 +133,7 @@ export const CycleCalendar: React.FC<CycleCalendarProps> = ({
         </div>
 
         {/* Weeks & Days */}
-        <div className="grid grid-cols-7 gap-2">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {cycleDays.map((day) => {
             const meta = getDayMeta(day);
             const isToday = day === currentCycleDay;
@@ -148,7 +148,7 @@ export const CycleCalendar: React.FC<CycleCalendarProps> = ({
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => setSelectedDay(day)}
-                className={`min-h-[72px] p-2 rounded-xl flex flex-col justify-between text-left transition-all border cursor-pointer relative ${
+                className={`min-h-[58px] sm:min-h-[72px] p-1 sm:p-2 rounded-lg sm:rounded-xl flex flex-col justify-between text-left transition-all border cursor-pointer relative overflow-hidden ${
                   isSelected
                     ? 'ring-2 ring-cyan-400 border-cyan-400 bg-cyan-950/40'
                     : isToday
@@ -160,7 +160,7 @@ export const CycleCalendar: React.FC<CycleCalendarProps> = ({
               >
                 <div className="flex items-center justify-between w-full">
                   <span
-                    className={`font-mono text-xs font-bold ${
+                    className={`font-mono text-[10px] sm:text-xs font-bold ${
                       isToday
                         ? 'text-cyan-300 underline underline-offset-4 decoration-cyan-400'
                         : isPast
@@ -172,26 +172,26 @@ export const CycleCalendar: React.FC<CycleCalendarProps> = ({
                   </span>
 
                   {isToday && (
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-cyan-400 animate-pulse"></span>
                   )}
                   {isPast && (
                     hasDebts ? (
                       <span
-                        className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[8px] font-mono font-bold border border-amber-500/40"
+                        className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[7px] sm:text-[8px] font-mono font-bold border border-amber-500/40"
                         title={`${dayDebts.length} задач(и) перенесены в долги`}
                       >
                         долг
                       </span>
                     ) : (
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500/80" />
+                      <CheckCircle2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-500/80" />
                     )
                   )}
                 </div>
 
                 {/* Tag & Time */}
-                <div className="mt-1">
+                <div className="mt-1 w-full overflow-hidden">
                   <span
-                    className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                    className={`text-[8px] sm:text-[9px] font-bold px-1 sm:px-1.5 py-0.2 rounded truncate block text-center ${
                       meta.tag === 'M'
                         ? 'bg-amber-950 text-amber-300 border border-amber-800/40'
                         : meta.tag === 'F'

@@ -11,7 +11,11 @@ import {
   BookOpen,
   ShieldCheck,
   KeyRound,
-  X
+  X,
+  Calendar,
+  Scale,
+  Award,
+  AlertTriangle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -266,31 +270,45 @@ export default function App() {
     }
   }, [apartments, activeAptId, authorizedAptIds, currentView]);
 
-  // Handle URL query parameters (?apt=0244)
+  // Handle URL query parameters (?apt=101&pin=1111 or ?apt=101)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const aptParam = params.get('apt');
-      const codeParam = params.get('code');
+      const pinParam = params.get('pin') || params.get('code');
 
-      if (aptParam || codeParam) {
+      if (aptParam) {
         const found = apartments.find(
           (a) =>
-            a.pinCode === aptParam ||
             a.apartmentNumber.toString() === aptParam ||
-            (codeParam && a.handle.toLowerCase() === codeParam.toLowerCase())
+            a.pinCode === aptParam ||
+            (pinParam && a.handle.toLowerCase() === pinParam.toLowerCase())
         );
+
         if (found) {
-          authorizeApartment(found.id);
-          setAuthorizedAptIds(getAuthorizedApartmentIds());
-          savePreviousSessionApartmentId(found.id);
-          setActiveAptIdState(found.id);
-          setActiveApartmentId(found.id);
-          if (found.members?.length > 0) {
-            setActiveMemberIdState(found.members[0].id);
-            setActiveMemberId(found.id, found.members[0].id);
+          // If valid PIN is supplied in link, directly authorize partner
+          if (pinParam && found.pinCode === pinParam) {
+            authorizeApartment(found.id);
+            setAuthorizedAptIds(getAuthorizedApartmentIds());
+            savePreviousSessionApartmentId(found.id);
+            setActiveAptIdState(found.id);
+            setActiveApartmentId(found.id);
+            if (found.members?.length > 0) {
+              setActiveMemberIdState(found.members[0].id);
+              setActiveMemberId(found.id, found.members[0].id);
+            }
+            setCurrentView('apartment');
+            // Clean up the URL query to avoid leaving secret PIN in address bar
+            try {
+              window.history.replaceState({}, '', window.location.pathname);
+            } catch {
+              // ignore
+            }
+          } else {
+            // Target the apartment and prompt for PIN via intercom
+            setTargetApartmentForIntercom(found);
+            setIsIntercomOpen(true);
           }
-          setCurrentView('apartment');
         }
       }
     }
@@ -1077,24 +1095,24 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
       {/* Top Global Navigation Bar */}
       <div className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setCurrentView('lobby')}
               className="flex items-center gap-2 font-extrabold text-base tracking-tight text-white hover:text-cyan-400 transition-colors cursor-pointer"
             >
               <span className="text-xl">🌀</span>
               <span>ЦИКЛON!</span>
-              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+              <span className="hidden sm:inline-block text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
                 PWA / 28 ДНЕЙ
               </span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => setCurrentView(currentView === 'guide' ? 'apartment' : 'guide')}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                 currentView === 'guide'
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
                   : 'bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-amber-300 border-slate-700/80'
@@ -1102,21 +1120,23 @@ export default function App() {
               title="Как устроен сервис ЦИКЛON: философия и атлас значков"
             >
               <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-              <span>Гид 📖</span>
+              <span className="hidden sm:inline">Гид 📖</span>
+              <span className="sm:hidden text-[11px]">Гид</span>
             </button>
 
             {currentView === 'apartment' ? (
               <button
                 onClick={() => setCurrentView('lobby')}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Холл дома</span>
+                <span className="hidden sm:inline">Холл дома</span>
+                <span className="sm:hidden text-[11px]">Холл</span>
               </button>
             ) : activeApartment && isAuthorizedInActiveApartment ? (
               <button
                 onClick={() => setCurrentView('apartment')}
-                className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-cyan-950/40 cursor-pointer"
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-cyan-950/40 cursor-pointer"
               >
                 <DoorOpen className="w-3.5 h-3.5" />
                 <span>Кв. {activeApartment.apartmentNumber}</span>
@@ -1127,20 +1147,22 @@ export default function App() {
                   setTargetApartmentForIntercom(null);
                   setIsIntercomOpen(true);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-cyan-950/40 cursor-pointer"
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md shadow-cyan-950/40 cursor-pointer"
               >
                 <KeyRound className="w-3.5 h-3.5" />
-                <span>Войти по PIN</span>
+                <span className="hidden sm:inline">Войти по PIN</span>
+                <span className="sm:hidden text-[11px]">PIN-вход</span>
               </button>
             )}
 
             <button
               onClick={() => setIsIntercomOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
               title="Открыть цифровой домофон"
             >
               <PhoneCall className="w-3.5 h-3.5" />
-              <span>Домофон 📟</span>
+              <span className="hidden sm:inline">Домофон 📟</span>
+              <span className="sm:hidden text-[11px]">Домофон</span>
             </button>
           </div>
         </div>
@@ -1262,7 +1284,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Body */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 pb-28 sm:pb-8">
         <AnimatePresence mode="wait">
           {currentView === 'lobby' ? (
             <motion.div
@@ -1305,28 +1327,18 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
             >
-              {activeApartment ? (
-                <UserGuide
-                  apartment={activeApartment}
-                  onGoToApartment={() => setCurrentView('apartment')}
-                  onOpenIntercom={() => setIsIntercomOpen(true)}
-                  onOpenConfig={() => setIsConfigOpen(true)}
-                />
-              ) : (
-                <div className="text-center py-16 px-6 bg-slate-900/60 rounded-3xl border border-slate-800 space-y-4">
-                  <div className="text-4xl">📖</div>
-                  <h3 className="text-xl font-bold text-white">Гид по дому</h3>
-                  <p className="text-slate-400 text-sm max-w-md mx-auto">
-                    В доме пока нет квартир. Заселите первую семью в лобби дома.
-                  </p>
-                  <button
-                    onClick={() => setCurrentView('lobby')}
-                    className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm"
-                  >
-                    Вернуться в лобби
-                  </button>
-                </div>
-              )}
+              <UserGuide
+                apartment={activeApartment || apartments[0] || null}
+                onGoToApartment={() => {
+                  if (activeApartment && isAuthorizedInActiveApartment) {
+                    setCurrentView('apartment');
+                  } else {
+                    setCurrentView('lobby');
+                  }
+                }}
+                onOpenIntercom={() => setIsIntercomOpen(true)}
+                onOpenConfig={() => setIsConfigOpen(true)}
+              />
             </motion.div>
           ) : !activeApartment || !isAuthorizedInActiveApartment ? (
             <motion.div
@@ -1437,6 +1449,73 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Mobile Fixed Bottom Navigation Bar */}
+      {currentView === 'apartment' && activeApartment && isAuthorizedInActiveApartment && (
+        <nav
+          aria-label="Навигация по разделам квартиры"
+          className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 shadow-[0_-8px_25px_rgba(0,0,0,0.6)] px-1 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+        >
+          <div className="grid grid-cols-5 items-center text-center">
+            <button
+              onClick={() => setActiveTab('today')}
+              className={`flex flex-col items-center justify-center py-1 transition-colors cursor-pointer min-h-[44px] ${
+                activeTab === 'today' ? 'text-cyan-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <CheckCircle2 className={`w-5 h-5 ${activeTab === 'today' ? 'stroke-[2.5]' : ''}`} />
+              <span className="text-[10px] mt-1 leading-none">Сегодня</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`flex flex-col items-center justify-center py-1 transition-colors cursor-pointer min-h-[44px] ${
+                activeTab === 'calendar' ? 'text-cyan-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Calendar className={`w-5 h-5 ${activeTab === 'calendar' ? 'stroke-[2.5]' : ''}`} />
+              <span className="text-[10px] mt-1 leading-none">28 дней</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('balance')}
+              className={`flex flex-col items-center justify-center py-1 transition-colors cursor-pointer min-h-[44px] ${
+                activeTab === 'balance' ? 'text-cyan-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Scale className={`w-5 h-5 ${activeTab === 'balance' ? 'stroke-[2.5]' : ''}`} />
+              <span className="text-[10px] mt-1 leading-none">Баланс</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('badges')}
+              className={`flex flex-col items-center justify-center py-1 transition-colors cursor-pointer min-h-[44px] ${
+                activeTab === 'badges' ? 'text-cyan-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Award className={`w-5 h-5 ${activeTab === 'badges' ? 'stroke-[2.5]' : ''}`} />
+              <span className="text-[10px] mt-1 leading-none">Награды</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('debts')}
+              className={`flex flex-col items-center justify-center py-1 transition-colors cursor-pointer min-h-[44px] relative ${
+                activeTab === 'debts' ? 'text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="relative">
+                <AlertTriangle className={`w-5 h-5 ${activeTab === 'debts' ? 'stroke-[2.5]' : ''}`} />
+                {activeApartment.debts.length > 0 && (
+                  <span className="absolute -top-1.5 -right-2.5 px-1 py-0.2 rounded-full bg-amber-500 text-slate-950 font-bold font-mono text-[9px] leading-tight">
+                    {activeApartment.debts.length}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] mt-1 leading-none">Долги</span>
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-slate-800/60 py-6 text-center text-xs text-slate-400">

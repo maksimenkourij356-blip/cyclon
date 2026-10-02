@@ -18,8 +18,8 @@ export const TelegramShareModal: React.FC<TelegramShareModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  const shareLink = `${currentUrl}?apt=${apartment.pinCode}&code=${apartment.handle}`;
+  const currentUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : '';
+  const shareLink = `${currentUrl}?apt=${apartment.apartmentNumber}&pin=${apartment.pinCode}`;
 
   const handleCopy = () => {
     if (navigator.clipboard) {
