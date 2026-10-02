@@ -1421,7 +1421,6 @@ export default function App() {
                   currentCycleDay={activeApartment.cycleDay}
                   tasks={activeApartment.tasks}
                   debts={activeApartment.debts}
-                  onSetCycleDay={handleSetCycleDay}
                   onGoToDebts={() => setActiveTab('debts')}
                 />
               )}
