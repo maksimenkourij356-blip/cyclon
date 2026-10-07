@@ -25,6 +25,20 @@ export function getLocalTodayDateString(): string {
 }
 
 /**
+ * Calculates calendar day difference between two YYYY-MM-DD strings using UTC,
+ * avoiding daylight saving time (DST) shifts and locale parsing bugs.
+ */
+export function getCalendarDayDiff(fromDateStr: string, toDateStr: string): number {
+  if (!fromDateStr || !toDateStr) return 0;
+  const p1 = fromDateStr.split('-').map(Number);
+  const p2 = toDateStr.split('-').map(Number);
+  if (p1.length < 3 || p2.length < 3 || isNaN(p1[0]) || isNaN(p2[0])) return 0;
+  const utc1 = Date.UTC(p1[0], p1[1] - 1, p1[2]);
+  const utc2 = Date.UTC(p2[0], p2[1] - 1, p2[2]);
+  return Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
+}
+
+/**
  * Returns the ISO day of week for today:
  * 1 = Monday, 2 = Tuesday, ..., 7 = Sunday
  */
@@ -78,7 +92,8 @@ export interface DayAdvanceResult {
 export function advanceApartmentDay(
   apt: Apartment,
   targetDay: number,
-  targetDateStr: string = getLocalTodayDateString()
+  targetDateStr: string = getLocalTodayDateString(),
+  diffDays: number = 1
 ): DayAdvanceResult {
   const oldDay = apt.cycleDay;
   const missedRitualMessages: string[] = [];
@@ -103,18 +118,22 @@ export function advanceApartmentDay(
     }
   });
 
-  // 2. Collect uncompleted NON-RITUAL planned tasks scheduled for the day(s) being left behind -> to DEBTS
+  // 2. Identify all cycle days that were left behind
+  const daysLeftBehind = new Set<number>();
+  const countDays = Math.max(1, Math.min(diffDays, 28));
+  for (let i = 0; i < countDays; i++) {
+    const d = ((oldDay - 1 + i) % 28) + 1;
+    if (d !== targetDay || countDays >= 28) {
+      daysLeftBehind.add(d);
+    }
+  }
+
+  // 3. Collect uncompleted NON-RITUAL planned tasks scheduled for the day(s) being left behind -> to DEBTS
   const uncompletedPlanned = apt.tasks.filter((t) => {
     if (t.category === 'ritual') return false; // Daily rituals do NOT accumulate in debts!
     if (!t.dayOfCycle) return false;
     if (t.status === 'completed') return false;
-
-    // Moving forward in cycle (e.g. Day 1 -> Day 2 or Day 1 -> Day 3)
-    if (targetDay > oldDay) {
-      return t.dayOfCycle >= oldDay && t.dayOfCycle < targetDay;
-    }
-    // Any other shift, collect tasks of current day
-    return t.dayOfCycle === oldDay;
+    return daysLeftBehind.has(t.dayOfCycle);
   });
 
   // Prepare new debts, avoiding duplicates
@@ -139,7 +158,7 @@ export function advanceApartmentDay(
   const movedTaskIds = new Set(uncompletedPlanned.map((t) => t.id));
   const remainingTasks = apt.tasks.filter((t) => !movedTaskIds.has(t.id));
 
-  // 3. Reset all daily rituals for the new day
+  // 4. Reset all daily rituals for the new day
   const refreshedTasks = remainingTasks.map((t) => {
     if (t.category === 'ritual') {
       return {
@@ -179,41 +198,64 @@ export interface AutoAdvanceCheckResult {
 }
 
 /**
- * Checks if the calendar date has advanced or if the cycleDay is desynchronized with today's real weekday.
+ * Checks if the calendar date has advanced across midnight or if cycleDay needs synchronization.
  * Automatically aligns and calculates the next cycleDay,
- * moves yesterday's uncompleted tasks to debts, and refreshes daily rituals.
+ * moves yesterday's uncompleted tasks to debts without penalties, and refreshes daily rituals.
  */
 export function checkApartmentDayAutoAdvance(apt: Apartment): AutoAdvanceCheckResult {
   const todayStr = getLocalTodayDateString();
   const realIsoWeekday = getCurrentRealDayOfWeek();
   const currentCycleWeekday = ((apt.cycleDay - 1) % 7) + 1;
 
-  // 1. If already updated for today, do not interfere (respects manual day switch or chosen start day)
-  if (apt.lastActiveCalendarDate === todayStr) {
-    return {
-      updatedApt: apt,
-      shouldUpdate: false,
-      advanced: false,
-      daysAdvanced: 0,
-      movedCount: 0,
-      missedRitualMessages: [],
-    };
-  }
+  // 1. If apartment has lastActiveCalendarDate, check calendar difference
+  if (apt.lastActiveCalendarDate) {
+    const diffDays = getCalendarDayDiff(apt.lastActiveCalendarDate, todayStr);
 
-  // 2. If apartment has no calendar date recorded yet (first time initialization or legacy mock data)
-  if (!apt.lastActiveCalendarDate) {
-    // If the apartment's cycle day is out of sync with real calendar weekday, align it to today's weekday
-    if (currentCycleWeekday !== realIsoWeekday) {
-      const alignedDay = alignCycleDayToRealWeekday(apt.cycleDay);
+    if (diffDays > 0) {
+      // Midnight has passed by diffDays! Advance cycle sequentially
+      const targetCycleDay = ((apt.cycleDay - 1 + diffDays) % 28) + 1;
+      const { updatedApt, movedCount, missedRitualMessages } = advanceApartmentDay(
+        apt,
+        targetCycleDay,
+        todayStr,
+        diffDays
+      );
+
       return {
-        updatedApt: { ...apt, cycleDay: alignedDay, lastActiveCalendarDate: todayStr },
+        updatedApt,
         shouldUpdate: true,
+        advanced: true,
+        daysAdvanced: diffDays,
+        movedCount,
+        missedRitualMessages,
+      };
+    }
+
+    if (diffDays === 0) {
+      // Same calendar day: verify cycle day matches real weekday
+      if (currentCycleWeekday !== realIsoWeekday) {
+        const alignedDay = alignCycleDayToRealWeekday(apt.cycleDay);
+        return {
+          updatedApt: { ...apt, cycleDay: alignedDay },
+          shouldUpdate: true,
+          advanced: false,
+          daysAdvanced: 0,
+          movedCount: 0,
+          missedRitualMessages: [],
+        };
+      }
+
+      return {
+        updatedApt: apt,
+        shouldUpdate: false,
         advanced: false,
         daysAdvanced: 0,
         movedCount: 0,
         missedRitualMessages: [],
       };
     }
+
+    // Negative diffDays (clock rolled back or client timezone shift) -> update date stamp
     return {
       updatedApt: { ...apt, lastActiveCalendarDate: todayStr },
       shouldUpdate: true,
@@ -224,35 +266,33 @@ export function checkApartmentDayAutoAdvance(apt: Apartment): AutoAdvanceCheckRe
     };
   }
 
-  // 3. Calendar day has advanced past apt.lastActiveCalendarDate (e.g. midnight passed)
-  if (apt.lastActiveCalendarDate < todayStr) {
-    const d1 = new Date(apt.lastActiveCalendarDate + 'T00:00:00');
-    const d2 = new Date(todayStr + 'T00:00:00');
-    const diffMs = d2.getTime() - d1.getTime();
-    const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+  // 2. If no lastActiveCalendarDate is recorded yet, check cycleStartDate
+  if (apt.cycleStartDate) {
+    const diffDaysFromStart = getCalendarDayDiff(apt.cycleStartDate, todayStr);
+    if (diffDaysFromStart > 0) {
+      const targetCycleDay = ((apt.cycleDay - 1 + diffDaysFromStart) % 28) + 1;
+      const { updatedApt, movedCount, missedRitualMessages } = advanceApartmentDay(
+        apt,
+        targetCycleDay,
+        todayStr,
+        diffDaysFromStart
+      );
 
-    // Advance 28-day cycle sequentially by the number of days passed
-    const targetCycleDay = ((apt.cycleDay - 1 + diffDays) % 28) + 1;
-
-    const { updatedApt, movedCount, missedRitualMessages } = advanceApartmentDay(
-      apt,
-      targetCycleDay,
-      todayStr
-    );
-
-    return {
-      updatedApt,
-      shouldUpdate: true,
-      advanced: true,
-      daysAdvanced: diffDays,
-      movedCount,
-      missedRitualMessages,
-    };
+      return {
+        updatedApt,
+        shouldUpdate: true,
+        advanced: true,
+        daysAdvanced: diffDaysFromStart,
+        movedCount,
+        missedRitualMessages,
+      };
+    }
   }
 
-  // Future date fallback
+  // Fallback: align to current real weekday and record today's date
+  const alignedDay = alignCycleDayToRealWeekday(apt.cycleDay);
   return {
-    updatedApt: { ...apt, lastActiveCalendarDate: todayStr },
+    updatedApt: { ...apt, cycleDay: alignedDay, lastActiveCalendarDate: todayStr },
     shouldUpdate: true,
     advanced: false,
     daysAdvanced: 0,

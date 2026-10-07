@@ -79,7 +79,13 @@ import {
 } from './utils/dayCycle';
 
 export default function App() {
-  const [apartments, setApartments] = useState<Apartment[]>(() => loadApartments());
+  const [apartments, setApartments] = useState<Apartment[]>(() => {
+    const loaded = loadApartments();
+    return loaded.map((apt) => {
+      const res = checkApartmentDayAutoAdvance(apt);
+      return res.shouldUpdate ? res.updatedApt : apt;
+    });
+  });
   const [authorizedAptIds, setAuthorizedAptIds] = useState<string[]>(() => getAuthorizedApartmentIds());
   const [activeAptId, setActiveAptIdState] = useState<string>(() => {
     const prev = getPreviousSessionApartmentId();
@@ -173,9 +179,19 @@ export default function App() {
     const unsubscribeApts = subscribeToCloudApartments((cloudApts) => {
       setIsCloudLoaded(true);
       if (cloudApts !== undefined && cloudApts !== null) {
-        setApartments(cloudApts);
-        saveApartments(cloudApts);
-        if (cloudApts.length === 0) {
+        // Auto-advance any cloud apartments that crossed midnight
+        const advancedApts = cloudApts.map((apt) => {
+          const res = checkApartmentDayAutoAdvance(apt);
+          if (res.shouldUpdate) {
+            syncApartmentToCloud(res.updatedApt);
+            return res.updatedApt;
+          }
+          return apt;
+        });
+
+        setApartments(advancedApts);
+        saveApartments(advancedApts);
+        if (advancedApts.length === 0) {
           setActiveAptIdState('');
           setCurrentView('lobby');
         }
@@ -201,8 +217,6 @@ export default function App() {
 
   // Automatic day advancement across calendar days (midnight check & periodic poll)
   useEffect(() => {
-    if (!isCloudLoaded) return;
-
     const runAutoAdvanceCheck = () => {
       setApartments((prevApts) => {
         let anyChanged = false;
@@ -235,25 +249,31 @@ export default function App() {
       });
     };
 
-    // Run on initial load
+    // Run on initial load and whenever active apartment changes
     runAutoAdvanceCheck();
 
-    // Check periodically (every 30s) so if the tab is left open past midnight, it advances seamlessly
-    const intervalId = setInterval(runAutoAdvanceCheck, 30000);
+    // Check periodically (every 15s) so if the tab is left open past midnight, it advances seamlessly
+    const intervalId = setInterval(runAutoAdvanceCheck, 15000);
 
-    // Also check on tab refocus
+    // Also check on tab refocus or window focus (e.g. phone screen unlocked)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         runAutoAdvanceCheck();
       }
     };
+    const handleFocus = () => {
+      runAutoAdvanceCheck();
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, [activeAptId]);
+  }, [activeAptId, isCloudLoaded]);
 
   // If active apartment ID is set but was deleted or is not authorized, clear it and redirect to lobby
   useEffect(() => {
@@ -286,16 +306,23 @@ export default function App() {
         );
 
         if (found) {
+          const advanceRes = checkApartmentDayAutoAdvance(found);
+          const targetApt = advanceRes.shouldUpdate ? advanceRes.updatedApt : found;
+          if (advanceRes.shouldUpdate) {
+            syncApartmentToCloud(targetApt);
+            setApartments((prev) => prev.map((a) => (a.id === targetApt.id ? targetApt : a)));
+          }
+
           // If valid PIN is supplied in link, directly authorize partner
-          if (pinParam && found.pinCode === pinParam) {
-            authorizeApartment(found.id);
+          if (pinParam && targetApt.pinCode === pinParam) {
+            authorizeApartment(targetApt.id);
             setAuthorizedAptIds(getAuthorizedApartmentIds());
-            savePreviousSessionApartmentId(found.id);
-            setActiveAptIdState(found.id);
-            setActiveApartmentId(found.id);
-            if (found.members?.length > 0) {
-              setActiveMemberIdState(found.members[0].id);
-              setActiveMemberId(found.id, found.members[0].id);
+            savePreviousSessionApartmentId(targetApt.id);
+            setActiveAptIdState(targetApt.id);
+            setActiveApartmentId(targetApt.id);
+            if (targetApt.members?.length > 0) {
+              setActiveMemberIdState(targetApt.members[0].id);
+              setActiveMemberId(targetApt.id, targetApt.members[0].id);
             }
             setCurrentView('apartment');
             // Clean up the URL query to avoid leaving secret PIN in address bar
@@ -306,7 +333,7 @@ export default function App() {
             }
           } else {
             // Target the apartment and prompt for PIN via intercom
-            setTargetApartmentForIntercom(found);
+            setTargetApartmentForIntercom(targetApt);
             setIsIntercomOpen(true);
           }
         }
@@ -315,19 +342,45 @@ export default function App() {
   }, [apartments]);
 
   const handleAttemptEnterApartment = (apt: Apartment) => {
-    setTargetApartmentForIntercom(apt);
+    const advanceRes = checkApartmentDayAutoAdvance(apt);
+    const targetApt = advanceRes.shouldUpdate ? advanceRes.updatedApt : apt;
+    if (advanceRes.shouldUpdate) {
+      syncApartmentToCloud(targetApt);
+      setApartments((prev) => prev.map((a) => (a.id === targetApt.id ? targetApt : a)));
+    }
+    setTargetApartmentForIntercom(targetApt);
     setIsIntercomOpen(true);
   };
 
   const handleSelectApartment = (apt: Apartment) => {
-    authorizeApartment(apt.id);
+    const advanceRes = checkApartmentDayAutoAdvance(apt);
+    const targetApt = advanceRes.shouldUpdate ? advanceRes.updatedApt : apt;
+    if (advanceRes.shouldUpdate) {
+      syncApartmentToCloud(targetApt);
+      setApartments((prev) => prev.map((a) => (a.id === targetApt.id ? targetApt : a)));
+      if (advanceRes.advanced) {
+        soundEffects.playVictory();
+        setDaySwitchToast({
+          message: `Наступил новый день (День ${targetApt.cycleDay} цикла)! Ежедневные рутины сброшены, вчерашние незакрытые задачи перенесены в долги без штрафов 🕊️`,
+          debtsCount: advanceRes.movedCount,
+          targetDay: targetApt.cycleDay,
+          missedRituals: advanceRes.missedRitualMessages,
+          allRitualsDone: advanceRes.missedRitualMessages.length === 0,
+        });
+        setTimeout(() => {
+          setDaySwitchToast(null);
+        }, 8000);
+      }
+    }
+
+    authorizeApartment(targetApt.id);
     setAuthorizedAptIds(getAuthorizedApartmentIds());
-    savePreviousSessionApartmentId(apt.id);
-    setActiveAptIdState(apt.id);
-    setActiveApartmentId(apt.id);
-    if (apt.members.length > 0) {
-      setActiveMemberIdState(apt.members[0].id);
-      setActiveMemberId(apt.id, apt.members[0].id);
+    savePreviousSessionApartmentId(targetApt.id);
+    setActiveAptIdState(targetApt.id);
+    setActiveApartmentId(targetApt.id);
+    if (targetApt.members.length > 0) {
+      setActiveMemberIdState(targetApt.members[0].id);
+      setActiveMemberId(targetApt.id, targetApt.members[0].id);
     }
     setCurrentView('apartment');
   };
