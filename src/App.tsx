@@ -1347,30 +1347,42 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
             >
-              <BuildingLobby
-                apartments={apartments}
-                activeApartment={isAuthorizedInActiveApartment ? activeApartment : null}
-                onOpenIntercom={() => {
-                  setTargetApartmentForIntercom(null);
-                  setIsIntercomOpen(true);
-                }}
-                onSelectApartment={handleSelectApartment}
-                onGoToActiveApartment={() => {
-                  if (activeApartment && isAuthorizedInActiveApartment) {
-                    setCurrentView('apartment');
-                  } else {
+              {!isCloudLoaded && apartments.length === 0 ? (
+                <div className="py-24 text-center space-y-4">
+                  <div className="w-16 h-16 mx-auto rounded-3xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-3xl animate-pulse">
+                    🌀
+                  </div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">Подключение к ЖК ЦИКЛON</h3>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Загрузка актуального реестра квартир из облачной базы данных...
+                  </p>
+                </div>
+              ) : (
+                <BuildingLobby
+                  apartments={apartments}
+                  activeApartment={isAuthorizedInActiveApartment ? activeApartment : null}
+                  onOpenIntercom={() => {
+                    setTargetApartmentForIntercom(null);
                     setIsIntercomOpen(true);
-                  }
-                }}
-                onOpenGuide={() => setCurrentView('guide')}
-                onAttemptEnterApartment={handleAttemptEnterApartment}
-                onOpenStarosta={() => setIsStarostaOpen(true)}
-                onCreateApartment={handleCreateApartment}
-                onOpenContactDuty={handleOpenContactDuty}
-                onRestoreDemo={handleStarostaRestoreDemoApartments}
-                dutyMessages={dutyMessages}
-                systemConfig={systemConfig}
-              />
+                  }}
+                  onSelectApartment={handleSelectApartment}
+                  onGoToActiveApartment={() => {
+                    if (activeApartment && isAuthorizedInActiveApartment) {
+                      setCurrentView('apartment');
+                    } else {
+                      setIsIntercomOpen(true);
+                    }
+                  }}
+                  onOpenGuide={() => setCurrentView('guide')}
+                  onAttemptEnterApartment={handleAttemptEnterApartment}
+                  onOpenStarosta={() => setIsStarostaOpen(true)}
+                  onCreateApartment={handleCreateApartment}
+                  onOpenContactDuty={handleOpenContactDuty}
+                  onRestoreDemo={handleStarostaRestoreDemoApartments}
+                  dutyMessages={dutyMessages}
+                  systemConfig={systemConfig}
+                />
+              )}
             </motion.div>
           ) : currentView === 'guide' ? (
             <motion.div

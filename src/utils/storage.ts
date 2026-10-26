@@ -88,31 +88,18 @@ const INITIALIZED_FLAG_KEY = 'cyclon_initialized_flag_v7';
 
 export function loadApartments(): Apartment[] {
   try {
-    const isInitialized = localStorage.getItem(INITIALIZED_FLAG_KEY);
     const data = localStorage.getItem(STORAGE_KEY);
-    
-    // If the storage was already initialized, respect whatever is stored, even an empty array []
-    if (isInitialized && data !== null) {
+    if (data !== null) {
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-
-    if (data) {
-      const parsed: Apartment[] = JSON.parse(data);
-      if (Array.isArray(parsed)) {
-        localStorage.setItem(INITIALIZED_FLAG_KEY, 'true');
         return parsed;
       }
     }
   } catch (e) {
     console.error('Failed to load apartments from localStorage:', e);
   }
-  // Initialize with initial apartments on very first run
-  saveApartments(INITIAL_APARTMENTS);
-  localStorage.setItem(INITIALIZED_FLAG_KEY, 'true');
-  return INITIAL_APARTMENTS;
+  // On fresh device with no cached data, return empty list and let Firestore populate real data
+  return [];
 }
 
 export function saveApartments(apartments: Apartment[]): void {
