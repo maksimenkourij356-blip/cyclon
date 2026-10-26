@@ -172,31 +172,42 @@ export default function App() {
 
   // Real-time synchronization with Firebase Cloud Firestore
   useEffect(() => {
-    // Seed initial apartments if cloud is newly provisioned
-    seedCloudIfEmpty().catch(console.warn);
+    // Fallback timer: if cloud takes longer than 2.5s (e.g. offline mode or strict proxy),
+    // mark isCloudLoaded as true so user can smoothly see the interface without freezing
+    const fallbackTimer = setTimeout(() => {
+      setIsCloudLoaded(true);
+    }, 2500);
 
     // Subscribe to cloud apartments in real-time
-    const unsubscribeApts = subscribeToCloudApartments((cloudApts) => {
-      setIsCloudLoaded(true);
-      if (cloudApts !== undefined && cloudApts !== null) {
-        // Auto-advance any cloud apartments that crossed midnight
-        const advancedApts = cloudApts.map((apt) => {
-          const res = checkApartmentDayAutoAdvance(apt);
-          if (res.shouldUpdate) {
-            syncApartmentToCloud(res.updatedApt);
-            return res.updatedApt;
-          }
-          return apt;
-        });
+    const unsubscribeApts = subscribeToCloudApartments(
+      (cloudApts) => {
+        setIsCloudLoaded(true);
+        clearTimeout(fallbackTimer);
+        if (cloudApts !== undefined && cloudApts !== null) {
+          // Auto-advance any cloud apartments that crossed midnight
+          const advancedApts = cloudApts.map((apt) => {
+            const res = checkApartmentDayAutoAdvance(apt);
+            if (res.shouldUpdate) {
+              syncApartmentToCloud(res.updatedApt);
+              return res.updatedApt;
+            }
+            return apt;
+          });
 
-        setApartments(advancedApts);
-        saveApartments(advancedApts);
-        if (advancedApts.length === 0) {
-          setActiveAptIdState('');
-          setCurrentView('lobby');
+          setApartments(advancedApts);
+          saveApartments(advancedApts);
+          if (advancedApts.length === 0) {
+            setActiveAptIdState('');
+            setCurrentView('lobby');
+          }
         }
+      },
+      (err) => {
+        // In offline mode or connection delay, release loading state
+        setIsCloudLoaded(true);
+        clearTimeout(fallbackTimer);
       }
-    });
+    );
 
     // Subscribe to Starosta / system config
     const unsubscribeConfig = subscribeToSystemConfig((cfg) => {
@@ -209,6 +220,7 @@ export default function App() {
     });
 
     return () => {
+      clearTimeout(fallbackTimer);
       unsubscribeApts();
       unsubscribeConfig();
       unsubscribeMessages();

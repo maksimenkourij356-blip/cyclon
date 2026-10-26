@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { 
+  initializeFirestore,
   getFirestore, 
   Firestore,
   collection, 
@@ -31,12 +32,16 @@ let db: Firestore;
 
 try {
   app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-  // Connect to the provisioned database instance
-  db = getFirestore(app, DATABASE_ID);
+  // Connect with experimentalAutoDetectLongPolling to prevent 10s backend connection timeouts in iframe/browsers
+  db = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+  }, DATABASE_ID);
 } catch (err) {
-  console.error('[Firebase] Failed to initialize Firestore with custom database ID, falling back to default:', err);
-  app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-  db = getFirestore(app);
+  try {
+    db = getFirestore(app, DATABASE_ID);
+  } catch {
+    db = getFirestore(app);
+  }
 }
 
 export { app, db };
